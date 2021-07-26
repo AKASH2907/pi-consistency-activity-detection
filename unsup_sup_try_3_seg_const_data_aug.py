@@ -34,15 +34,6 @@ from utils.metrics import get_accuracy, IOU2
 #####################################################
 '''
 
-unsup_sup_try_3_seg_const_bce_iou_data_aug_clip_or_seq_flip_const_l2
-    - l2 consistency on both augmented op, aug_mask and aug_op_reversed, orig_op
-
-unsup_sup_try_3_seg_const_bce_iou_data_aug_clip_or_seq_flip_const_l2_wo_aug_map_const  --- THIS ONE
-    - l2 const aug_op_reversed, orig_op
-
-unsup_sup_try_3_seg_const_bce_iou_data_aug_clip_or_seq_flip_const_l2_wo_orig_map_const
-    - l2 const aug_op, aug_mask
-
 data_aug_01
     - flip lr, flip sequence, flip seq+lr
 
@@ -70,21 +61,21 @@ def aug_visualize_clips(rgb_clips, index, filename):
             image = (rgb_clips[i]*255).astype(np.uint8)
             writer.append_data(image) 
 
-def val_model_interface(minibatch, r=0):
+def val_model_interface(minibatch):
     data = minibatch['data'].type(torch.cuda.FloatTensor)
     action = minibatch['action'].cuda()
     segmentation = minibatch['segmentation']
 
     output, predicted_action, feat = model(data, action)
 
-    class_loss, abs_class_loss = criterion_cls(predicted_action, action, r)
+    class_loss, abs_class_loss = criterion_cls(predicted_action, action)
     loss1 = criterion_seg_1(output, segmentation.float().cuda())
     
     seg_loss = loss1
     total_loss =  seg_loss + class_loss
     return (output, predicted_action, segmentation, action, total_loss, seg_loss, class_loss)
 
-def train_model_interface(label_minibatch, unlabel_minibatch, wt_seg, wt_cls, wt_cons_cls, const_loss, r=0):
+def train_model_interface(args, label_minibatch, unlabel_minibatch):
     label_data = label_minibatch['data'].type(torch.cuda.FloatTensor)
     unlabel_data = unlabel_minibatch['data'].type(torch.cuda.FloatTensor)
 
@@ -167,14 +158,15 @@ def train_model_interface(label_minibatch, unlabel_minibatch, wt_seg, wt_cls, wt
     #         aug_visualize_clips(aug_mask[0], 0, 'clock_mask')
     assert aug_data.shape == concat_data.shape
     assert aug_mask.shape == concat_seg.shape
-    # exit()
+    
+
     # ORIGINAL CLIP OUTPUT
     output, predicted_action, feat  = model(concat_data, concat_action)
     # AUGMENTED CLIP OUTPUT
     aug_op, aug_pred_action, aug_feat = model(aug_data, concat_action)
 
     # aug_visualize_clips(aug_op[0], 0, 'aug_outptu_mask_vis')
-    # exit()
+    
     # SEG LOSS SUPERVISED - ORIGINAL
     labeled_op = output[labeled_vid_index]
     labeled_seg_data = concat_seg[labeled_vid_index]
@@ -184,7 +176,7 @@ def train_model_interface(label_minibatch, unlabel_minibatch, wt_seg, wt_cls, wt
     # CLS LOSS SUPERVISED - ORIGINAL
     labeled_cls = concat_action[labeled_vid_index]
     labeled_pred_action = predicted_action[labeled_vid_index]
-    class_loss, abs_class_loss = criterion_cls(labeled_pred_action, labeled_cls, r)
+    class_loss, abs_class_loss = criterion_cls(labeled_pred_action, labeled_cls)
 
     # CONST LOSS 
     # Modify the output for consistency in localization maps
@@ -215,30 +207,30 @@ def train_model_interface(label_minibatch, unlabel_minibatch, wt_seg, wt_cls, wt
     #     cons_loss_b = consistency_criterion(aug_op.log(), aug_pred_seg_map.detach()).sum(-1).mean()
     #     total_cons_loss = cons_loss_a + cons_loss_b
 
-    # consistency_criterion = nn.MSELoss()
+    # THIS IS ORIGINAL L2 LOSS
     # aug_cons_loss_1 = consistency_criterion(aug_pred_seg_map, output)
     # # aug_cons_loss_2 = consistency_criterion(aug_op, aug_mask.float().cuda())  # not useful bad results    
     # total_cons_loss = aug_cons_loss_1 
 
-    multi_batch_variance = measure_pixelwise_uncertainty(output+aug_pred_seg_map)
+    # VARIANCE CALCULATIONS
+    # THIS IS WEIGHTED L2 LOSS
+    multi_batch_variance = measure_pixelwise_uncertainty(output)
     multi_batch_variance = multi_batch_variance.type(torch.cuda.FloatTensor)
     loss_wt = weighted_mse_loss(aug_pred_seg_map, output, multi_batch_variance)
 
     total_cons_loss = loss_wt
-    # print(total_cons_loss)
 
-    # exit()    
     seg_loss = seg_loss_1 + seg_loss_2
     class_loss = class_loss
 
-    total_loss = wt_seg * seg_loss + wt_cls * class_loss + wt_cons_cls * total_cons_loss
+    total_loss = args.wt_seg * seg_loss + args.wt_cls * class_loss + args.wt_cons * total_cons_loss
 
     return (output, predicted_action, concat_seg, concat_action, total_loss, seg_loss, class_loss, total_cons_loss)
 
 
 
 
-def train(model, labeled_train_loader, unlabeled_train_loader, optimizer, scheduler, epoch, r, save_path, writer, wt_seg, wt_cls, wt_cons_cls, const_loss, short=False):
+def train(args, model, labeled_train_loader, unlabeled_train_loader, optimizer, scheduler, epoch, r, save_path, writer, short=False):
     start_time = time.time()
     steps = len(unlabeled_train_loader)
     # print('training: batch size ',TRAIN_BATCH_SIZE,' ',N_EPOCHS,'epochs', steps,' steps ')
@@ -264,8 +256,7 @@ def train(model, labeled_train_loader, unlabeled_train_loader, optimizer, schedu
         if (batch_id + 1) % 100 == 0:
             r = (1. * batch_id + (epoch - 1) * steps) / (30 * steps)
 
-        output, predicted_action, segmentation, action, loss, s_loss, c_loss, cc_loss = train_model_interface(label_minibatch, unlabel_minibatch, wt_seg, wt_cls, wt_cons_cls, 
-                                                                                                                const_loss, r)
+        output, predicted_action, segmentation, action, loss, s_loss, c_loss, cc_loss = train_model_interface(args, label_minibatch, unlabel_minibatch)
 
         loss.backward()
         optimizer.step()
@@ -294,7 +285,7 @@ def train(model, labeled_train_loader, unlabeled_train_loader, optimizer, schedu
                 'loss': r_total,
                 'loss_seg': r_seg,
                 'loss_cls': r_class,
-                'loss_cls_consistency':r_cc_class
+                'loss_consistency':r_cc_class
             }
             info_acc = {
             'acc': r_acc
@@ -339,7 +330,7 @@ def validate(model, val_data_loader, epoch, short=False):
                 if batch_id > 40:
                     break
             
-            output, predicted_action, segmentation, action, loss, s_loss, c_loss = val_model_interface(minibatch, r)
+            output, predicted_action, segmentation, action, loss, s_loss, c_loss = val_model_interface(minibatch)
             total_loss.append(loss.item())
             seg_loss.append(s_loss.item())
             class_loss.append(c_loss.item())
@@ -393,7 +384,7 @@ def parse_args():
     parser.add_argument('--const_loss', type=str, help='consistency loss type')
     parser.add_argument('--wt_seg', type=float, default=1, help='segmentation loss weight')
     parser.add_argument('--wt_cls', type=float, default=1, help='Classification loss weight')
-    parser.add_argument('--wt_cons_cls', type=float, default=1, help='class consistency loss weight')
+    parser.add_argument('--wt_cons', type=float, default=1, help='class consistency loss weight')
     parser.add_argument('--seed', type=int, default=47, help='seed for initializing training.')
     # parser.add_argument('--pretrained', type=bool, )
     args = parser.parse_args()
@@ -430,11 +421,10 @@ if __name__ == '__main__':
     args.pkl_file_unlabel = "train_annots_90_unlabeled_random.pkl"
     # labeled_trainset = UCF101DataLoader('train', [224, 224], TRAIN_BATCH_SIZE, file_id=args.pkl_file_label, percent=percent, use_random_start_frame=False)
     labeled_trainset = UCF101DataLoader('train', [224, 224], batch_size=4, file_id=args.pkl_file_label, percent=percent, use_random_start_frame=False)
-
     unlabeled_trainset = UCF101DataLoader('train', [224, 224], batch_size=12, file_id=args.pkl_file_unlabel, percent=percent, use_random_start_frame=False)
-
     validationset = UCF101DataLoader('validation',[224, 224], VAL_BATCH_SIZE, file_id="test_annots.pkl", use_random_start_frame=False)
     print(len(labeled_trainset), len(unlabeled_trainset), len(validationset))
+
     labeled_train_data_loader = DataLoader(
         dataset=labeled_trainset,
         batch_size=TRAIN_BATCH_SIZE//2,
@@ -500,7 +490,7 @@ if __name__ == '__main__':
     # scheduler = CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=20, cycle_mult=1.0, max_lr=0.001, min_lr=0.000001, warmup_steps=5, gamma=0.1)
     
     exp_id = args.exp_id
-    save_path = os.path.join('/home/akumar/activity_detect/caps_net/exp_4_data_aug/new_train_log_wts', exp_id)
+    save_path = os.path.join('/home/akumar/activity_detect/caps_net/exp_4_data_aug/train_log_wts', exp_id)
     model_save_dir = os.path.join(save_path,time.strftime('%m-%d-%H-%M'))
     writer = SummaryWriter(model_save_dir)
     if not os.path.exists(model_save_dir):
@@ -514,17 +504,17 @@ if __name__ == '__main__':
     r = 0
     for e in tqdm(range(1, N_EPOCHS + 1)):
         
-        r, train_loss = train(model, labeled_train_data_loader, unlabeled_train_data_loader, optimizer, scheduler, e, r, save_path, writer, args.wt_seg, args.wt_cls, args.wt_cons_cls, args.const_loss, short=False)
+        r, train_loss = train(args, model, labeled_train_data_loader, unlabeled_train_data_loader, optimizer, scheduler, e, r, save_path, writer, short=False)
 
         val_loss = validate(model, val_data_loader, e, short=False)
-        if val_loss < prev_best_val_loss:
-            print("Yay!!! Got the val loss down...")
-            val_model_path = os.path.join(model_save_dir, f'best_model_val_loss_{e}.pth')
-            torch.save(model.state_dict(), val_model_path)
-            prev_best_val_loss = val_loss;
-            if prev_best_val_loss_model_path:
-                os.remove(prev_best_val_loss_model_path)
-            prev_best_val_loss_model_path = val_model_path
+        # if val_loss < prev_best_val_loss:
+        #     print("Yay!!! Got the val loss down...")
+        #     val_model_path = os.path.join(model_save_dir, f'best_model_val_loss_{e}.pth')
+        #     torch.save(model.state_dict(), val_model_path)
+        #     prev_best_val_loss = val_loss;
+        #     if prev_best_val_loss_model_path:
+        #         os.remove(prev_best_val_loss_model_path)
+        #     prev_best_val_loss_model_path = val_model_path
 
         if train_loss < prev_best_train_loss:
             print("Yay!!! Got the train loss down...")

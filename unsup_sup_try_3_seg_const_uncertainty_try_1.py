@@ -1,39 +1,53 @@
 import sys
 import os
-import utils
+import cv2
 import torch
-import argparse
-import torch.nn as nn
-from torchvision import datasets, transforms
-from models.aug_capsules_ucf101 import CapsNet
-from itertools import cycle
-
-from torch.utils.data import DataLoader
-from torch import optim
 import time
 import random
 import imageio
-from torch.nn.modules.loss import _Loss
+import argparse
 import datetime
-import torch.nn.functional as F
-from models.pytorch_i3d import InceptionI3d
 import numpy as np
-from tensorboardX import SummaryWriter
+# import pandas as pd
+# import seaborn as sns
+
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import optim
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+from torch.nn.modules.loss import _Loss
+
 from tqdm import tqdm
-import pandas as pd
-import seaborn as sns
 from pylab import savefig
+from itertools import cycle
+from tensorboardX import SummaryWriter
 
-# import load_ucf101_pytorch_polate
-# from load_ucf101_pytorch_polate import UCF101DataLoader
+from models.aug_capsules_ucf101 import CapsNet
+from models.pytorch_i3d import InceptionI3d
 from datasets.ucf_dataloader import UCF101DataLoader
-# from cosine_annearing_with_warmup import CosineAnnealingWarmupRestarts
-from train_utils import SpreadLoss, get_accuracy, DiceLoss, IoULoss, FocalLoss, weighted_mse_loss
+
+from utils.losses import SpreadLoss, DiceLoss, IoULoss, weighted_mse_loss
+from utils.metrics import get_accuracy, IOU2
+# from utils.helpers import measure_pixelwise_uncertainty
+
+
+#####################################################
+'''
+Aim:
+    - In this code I try to reduce variance temporally pixel-based approach
+    
+Exp:
+    - More weights to uncertain region - Done
+    - More weights to certain region - Done
+    - Adaptive approach inverse weightage after few epochs - Done
+    - We can do linear ramping kind of thing where we increase the weight of one and reduce of the opp - NOT WORTH IT
+    - DUMP ADAPTIVE THING - Negative is hurting
+    - 
+
 
 '''
-we generate a weight map for segmentation and utilize that as weighted segmentation loss
-
-'''
+#####################################################
 
 def visualize_clips(rgb_clips, index, filename):
     if rgb_clips.requires_grad==False:
@@ -65,7 +79,7 @@ def val_model_interface(minibatch, r=0):
 
     output, predicted_action, feat, _ = model(data, action)
     
-    class_loss, abs_class_loss = criterion_cls(predicted_action, action, r)
+    class_loss, abs_class_loss = criterion_cls(predicted_action, action)
     loss1 = criterion_seg_1(output, segmentation.float().cuda())
     
     seg_loss = loss1
@@ -73,73 +87,206 @@ def val_model_interface(minibatch, r=0):
     return (output, predicted_action, segmentation, action, total_loss, seg_loss, class_loss)
 
 
-def measure_pixelwise_uncertainty(pred):
-    # Calculating mean across multiple MCD forward passes 
-    # batch_mean, batch_variance = 0, 0
-    count = 0
-    # shape = pred.shape
-    # print(shape, type(shape))
-    batch_variance = np.zeros((8, 1, 8, 224, 224))
-    # print(batch_variance.shape)
-    for zz in range(0, pred.shape[0]):
-        # if zz-1<0:
+# def measure_pixelwise_uncertainty(pred):
+#     # Calculating mean across multiple MCD forward passes 
+#     # batch_mean, batch_variance = 0, 0
+#     count = 0
+#     batch_variance = torch.zeros_like(pred, dtype=torch.double)
+#     # print(batch_variance.dtype)
+#     # exit()
+#     for zz in range(0, pred.shape[0]):
+#         m_temp = pred[zz][0]
+#         # clip_variance = torch.zeros((8, 224, 224))
+#         clip_variance = torch.zeros_like(pred[0][0], dtype=torch.double)
+#         for temp_cnt in range(8):
+#             # print(temp_cnt)
+#             if temp_cnt-1<0:
+#                 temp_var = m_temp[temp_cnt:temp_cnt+2]
+#             elif temp_cnt+1>7:
+#                 temp_var = m_temp[temp_cnt-1:]
+#             else:
+#                 # print(temp_cnt-1, temp_cnt, temp_cnt+1, temp_cnt+2)
+#                 temp_var = m_temp[temp_cnt-1:temp_cnt+2]
 
+#             # heatmap visualize
+#             temp_var = torch.var(temp_var, dim=0, unbiased=False)
+#             # temp_vars = np.var(temp_var.cpu().detach().numpy(), axis=0)
+#             # print(sum(temp_vars-temp_var))
+
+#             # print(temp_var.shape, int(temp_var.max()*255), int(temp_var.min()*255))
+#             # heatmap_img = (temp_var*255).astype(np.uint8)
+#             # heatmap_img = cv2.applyColorMap(heatmap_img, cv2.COLORMAP_JET)
+#             # cv2.imwrite("heatmap_uncertain_vis.png", heatmap_img)
+#             # exit()
+#             # df_cm = pd.DataFrame((temp_var*255).astype(np.uint8))
+#             # svm = sns.heatmap(df_cm, annot=True,cmap='coolwarm', linecolor='white', linewidths=1)
+#             # figure = svm.get_figure()    
+#             # figure.savefig('svm_conf.png', dpi=400)
+#             # temp_var = torch.clamp(temp_var, min=0.2, max=1.0)
+#             # print(temp_var)
+#             # temp_var = 1 - temp_var
+#             # print(temp_var)
+
+#             # exit()
+#             # clip_variance[temp_cnt] = torch.from_numpy(temp_var)
+#             clip_variance[temp_cnt] = temp_var
+
+
+#         # clip_variance = torch.reshape(clip_variance, (1, clip_variance.shape[0], clip_variance.shape[1], clip_variance.shape[2]))
+#         clip_variance = clip_variance.unsqueeze(0)
+#         # print(clip_variance.max(), clip_variance.min())
+#         # print(temp_var.shape, temp_var.max(), temp_var.min())
+
+#         # this is numpy already change the visualize function
+#         # visualize_clips(clip_variance, 0, 'clip_var')
+#         # print(clip_variance.shape, type(clip_variance))
+
+#         # clip_variance = torch.from_numpy(clip_variance)
+#         # print(clip_variance.max(), clip_variance.min())
+#         # print(clip_variance.shape, type(clip_variance))
+
+#         batch_variance[zz] = clip_variance
+
+#         # print(batch_variance.shape, batch_variance.max(), batch_variance.min())
+#     # print(type(batch_variance), type(batch_variance[0]))
+#     # batch_variance = torch.from_numpy(batch_variance)
+#     print(batch_variance.max(), batch_variance.min())
+#     print(batch_variance.min(0, keepdim=True)[0].shape)
+#     # A -= A.min(1, keepdim=True)[0]
+#     # A /= A.max(1, keepdim=True)[0]
+#     # batch_variance -= batch_variance.min(1, keepdim=True)[0]
+#     # batch_variance /= batch_variance.max(1, keepdim=True)[0]
+#     batch_variance -= batch_variance.min()
+#     batch_variance /= (batch_variance.max() - batch_variance.min())
+#     print(batch_variance.max(), batch_variance.min())
+
+
+#     exit()
+
+#     # Calculating variance across multiple MCD forward passes 
+#     # variance = np.var(pred.cpu().detach().numpy(), axis=0) # shape (n_samples, n_classes)
+#     # print(variance.shape)
+#     # imageio.imwrite('uncertain_vis/var_8.png', (variance*255).astype(np.uint8))
+
+#     # epsilon = sys.float_info.min
+#     # # Calculating entropy across multiple MCD forward passes 
+#     # entropy = -np.sum(mean*np.log(mean + epsilon), axis=-1) # shape (n_samples,)
+
+#     # # Calculating mutual information across multiple MCD forward passes 
+#     # mutual_info = entropy - np.mean(np.sum(-pred*np.log(pred + epsilon),
+#                                             # axis=-1), axis=0) # shape (n_samples,)
+
+#     return batch_variance
+
+def measure_pixelwise_uncertainty(pred, debug=False):
+    count = 0
+    batch_variance = np.zeros((8, 1, 8, 224, 224))
+    # print(batch_variance.dtype)
+    for zz in range(0, pred.shape[0]):
         m_temp = pred[zz][0]
-        # print(type(m_temp), m_temp.shape)
         clip_variance = np.zeros((8, 224, 224))
         for temp_cnt in range(8):
-            # print(temp_cnt)
             if temp_cnt-1<0:
                 temp_var = m_temp[temp_cnt:temp_cnt+2]
             elif temp_cnt+1>7:
                 temp_var = m_temp[temp_cnt-1:]
             else:
-                # print(temp_cnt-1, temp_cnt, temp_cnt+1, temp_cnt+2)
                 temp_var = m_temp[temp_cnt-1:temp_cnt+2]
 
             # heatmap visualize
             temp_var = np.var(temp_var.cpu().detach().numpy(), axis=0)
-            # df_cm = pd.DataFrame((temp_var*255).astype(np.uint8))
-            # svm = sns.heatmap(df_cm, annot=True,cmap='coolwarm', linecolor='white', linewidths=1)
-            # figure = svm.get_figure()    
-            # figure.savefig('svm_conf.png', dpi=400)
-            # exit()
-            # print(temp_var.shape)
-            # exit()
-            # temp_var = np.reshape(temp_var, (1, temp_var.shape[0], temp_var.shape[1], temp_var.shape[2]))
+            # print(temp_var.max(), temp_var.min())
+            temp_var -= temp_var.min()
+            temp_var /= (temp_var.max() - temp_var.min())
+
+            #####################################################
+            # Adaptive approach to flip after few epochs
+            # not giving any boost to simple uncertain so remove it
+            # for now later look into it
+            #####################################################
+            # if epoch<5:
+            # temp_var = 1 - temp_var
+            # print("normalized", temp_var.max(), temp_var.min())
+            #####################################################
+
+            #####################################################
+            # VISUALIZE HEAT MAP
+            if debug:
+                print("Analyze the uncertain regions in heatmaps")
+                print(temp_var.shape, int(temp_var.max()*255), int(temp_var.min()*255))
+                heatmap_img = (temp_var*255).astype(np.uint8)
+                heatmap_img = cv2.applyColorMap(heatmap_img, cv2.COLORMAP_JET)
+                cv2.imwrite("heatmap_uncertain_normalize_neg.png", heatmap_img)
+                exit()
+            #####################################################
+
             clip_variance[temp_cnt] = temp_var
-        # print(clip_variance.shape)
         clip_variance = np.reshape(clip_variance, (1, clip_variance.shape[0], clip_variance.shape[1], clip_variance.shape[2]))
-        # print(clip_variance.shape)
-            # print(clip_variance.max(), clip_variance.min())
-            # print(temp_var.shape, temp_var.max(), temp_var.min())
-
-        # this is numpy already change the visualize function
-        # visualize_clips(clip_variance, 0, 'clip_var')
-        # print(clip_variance.shape, type(clip_variance))
-
-        # clip_variance = torch.from_numpy(clip_variance)
-        # print(clip_variance.max(), clip_variance.min())
-        # print(clip_variance.shape, type(clip_variance))
 
         batch_variance[zz] = clip_variance
-        # print(batch_variance.shape, batch_variance.max(), batch_variance.min())
-    # print(type(batch_variance), type(batch_variance[0]))
+    # print(batch_variance.min(), batch_variance.max())
+    # batch_variance -= batch_variance.min()
+    # batch_variance /= (batch_variance.max() - batch_variance.min())
+    # print(batch_variance.min(), batch_variance.max())
+    # exit()
     batch_variance = torch.from_numpy(batch_variance)
 
+    return batch_variance
 
-    # Calculating variance across multiple MCD forward passes 
-    # variance = np.var(pred.cpu().detach().numpy(), axis=0) # shape (n_samples, n_classes)
-    # print(variance.shape)
-    # imageio.imwrite('uncertain_vis/var_8.png', (variance*255).astype(np.uint8))
 
-    # epsilon = sys.float_info.min
-    # # Calculating entropy across multiple MCD forward passes 
-    # entropy = -np.sum(mean*np.log(mean + epsilon), axis=-1) # shape (n_samples,)
+def measure_pixelwise_uncertainty_v2(pred, debug=False):
+    count = 0
+    batch_variance = np.zeros_like(pred.cpu().detach().numpy(), dtype=np.float64)
+    # print(batch_variance.dtype)
+    for zz in range(0, pred.shape[0]):
+        m_temp = pred[zz][0]
+        clip_variance = np.zeros_like(batch_variance[0][0])
+        # print(batch_variance.shape, batch_variance.dtype, clip_variance.shape, clip_variance.dtype)
+        for temp_cnt in range(8):
+            if temp_cnt-1<0:
+                temp_var = m_temp[temp_cnt:temp_cnt+2]
+            elif temp_cnt+1>7:
+                temp_var = m_temp[temp_cnt-1:]
+            else:
+                temp_var = m_temp[temp_cnt-1:temp_cnt+2]
 
-    # # Calculating mutual information across multiple MCD forward passes 
-    # mutual_info = entropy - np.mean(np.sum(-pred*np.log(pred + epsilon),
-                                            # axis=-1), axis=0) # shape (n_samples,)
+            # heatmap visualize
+            temp_var = np.var(temp_var.cpu().detach().numpy(), axis=0)
+            # print(temp_var.max(), temp_var.min())
+            temp_var -= temp_var.min()
+            temp_var /= (temp_var.max() - temp_var.min())
+
+            #####################################################
+            # Adaptive approach to flip after few epochs
+            # not giving any boost to simple uncertain so remove it
+            # for now later look into it
+            #####################################################
+            # if epoch<5:
+            # temp_var = 1 - temp_var
+            # print("normalized", temp_var.max(), temp_var.min())
+            #####################################################
+
+            #####################################################
+            # VISUALIZE HEAT MAP
+            if debug:
+                print("Analyze the uncertain regions in heatmaps")
+                print(temp_var.shape, int(temp_var.max()*255), int(temp_var.min()*255))
+                heatmap_img = (temp_var*255).astype(np.uint8)
+                heatmap_img = cv2.applyColorMap(heatmap_img, cv2.COLORMAP_JET)
+                cv2.imwrite("heatmap_uncertain_normalize_neg.png", heatmap_img)
+                exit()
+            #####################################################
+
+            clip_variance[temp_cnt] = temp_var
+        clip_variance = np.reshape(clip_variance, (1, clip_variance.shape[0], clip_variance.shape[1], clip_variance.shape[2]))
+
+        batch_variance[zz] = clip_variance
+    # print(batch_variance.min(), batch_variance.max())
+    # batch_variance -= batch_variance.min()
+    # batch_variance /= (batch_variance.max() - batch_variance.min())
+    # print(batch_variance.min(), batch_variance.max())
+    # exit()
+    batch_variance = torch.from_numpy(batch_variance)
 
     return batch_variance
 
@@ -147,7 +294,13 @@ def measure_pixelwise_uncertainty(pred):
 
 
 
-def train_model_interface(label_minibatch, unlabel_minibatch, wt_seg, wt_cls, wt_cons_cls, const_loss, r=0):
+def train_model_interface(args, label_minibatch, unlabel_minibatch, epoch):
+    '''
+    :label_minibatch:
+
+
+    '''
+
     label_data = label_minibatch['data'].type(torch.cuda.FloatTensor)
     fl_label_data = label_minibatch['flip_data'].type(torch.cuda.FloatTensor)
 
@@ -199,7 +352,7 @@ def train_model_interface(label_minibatch, unlabel_minibatch, wt_seg, wt_cls, wt
     # Classification loss SUPERVISED
     labeled_cls = concat_action[labeled_vid_index]
     labeled_pred_action = predicted_action[labeled_vid_index]
-    class_loss, abs_class_loss = criterion_cls(labeled_pred_action, labeled_cls, r)
+    class_loss, abs_class_loss = criterion_cls(labeled_pred_action, labeled_cls)
 
     # CONST LOSS
     flipped_pred_seg_map = torch.flip(flip_op, [4])
@@ -210,51 +363,53 @@ def train_model_interface(label_minibatch, unlabel_minibatch, wt_seg, wt_cls, wt
         visualize_clips(concat_data[0], 0, 'clip')
         visualize_clips(concat_seg[0], 0, 'mask')
 
-    # print(output[0][0].shape)
-    # exit()
     # batch_variance = measure_pixelwise_uncertainty(output)
     # batch_variance = batch_variance.type(torch.cuda.FloatTensor)
     # loss_wt = weighted_mse_loss(flipped_pred_seg_map, output, batch_variance)
+    
+    # if epoch<6:
+    #     equal_wt = torch.ones_like(output, dtype=torch.double)
+    #     equal_wt = equal_wt.type(torch.cuda.FloatTensor)
+    #     loss_wt = weighted_mse_loss(flipped_pred_seg_map, output, equal_wt)
 
-    multi_batch_variance = measure_pixelwise_uncertainty(output+flipped_pred_seg_map)
-    multi_batch_variance = multi_batch_variance.type(torch.cuda.FloatTensor)
-    loss_wt = weighted_mse_loss(flipped_pred_seg_map, output, multi_batch_variance)
+    # else:
 
-    # print(loss_wt)
-    # exit()
-    # if const_loss == 'l2':
-    # consistency_criterion = nn.MSELoss()
-    # cons_loss_1  = consistency_criterion(flipped_pred_seg_map, output)
-    # cons_loss_2 = consistency_criterion(flip_pen_segmap, pen_segmap)
-    # total_cons_loss = cons_loss_1 
-    # print(cons_loss_1)
+    batch_variance_orig_clip = measure_pixelwise_uncertainty_v2(output)
+    batch_variance_orig_clip = batch_variance_orig_clip.type(torch.cuda.FloatTensor)
+    loss_wt = weighted_mse_loss(flipped_pred_seg_map, output, batch_variance_orig_clip)
 
-    total_cons_loss = loss_wt
-    # print(total_cons_loss)
-    # exit()
+    # batch_variance_aug_clip = measure_pixelwise_uncertainty(flipped_pred_seg_map)
+    # batch_variance_aug_clip = batch_variance_aug_clip.type(torch.cuda.FloatTensor)
+    # print('cuda device:', multi_batch_variance.dtype)
+    #####################################################
+    # The idea is that measure the uncertainty temporally and then use it as
+    # a weight. No need to take the uncertainty of augmented clip 
+    #####################################################
+    # print(batch_variance_orig_clip.shape)
+    
+    # print(equal_wt.shape)
+
+    total_cons_loss = loss_wt    
 
     seg_loss = seg_loss_1 + seg_loss_2
-    total_loss = wt_seg * seg_loss + wt_cls * class_loss + wt_cons_cls * total_cons_loss
+    total_loss = args.wt_seg * seg_loss + args.wt_cls * class_loss + args.wt_cons * total_cons_loss
 
     return (output, predicted_action, concat_seg, concat_action, total_loss, seg_loss, class_loss, total_cons_loss)
 
 
 
 
-def train(model, labeled_train_loader, unlabeled_train_loader, optimizer, epoch, r, save_path, writer, wt_seg, wt_cls, wt_cons_cls, const_loss, short=False):
+def train(args, model, labeled_train_loader, unlabeled_train_loader, optimizer, epoch, r, save_path, writer, short=False):
     start_time = time.time()
     steps = len(unlabeled_train_loader)
-    # print('training: batch size ',TRAIN_BATCH_SIZE,' ',N_EPOCHS,'epochs', steps,' steps ')
     model.train(mode=True)
     model.training = True
     total_loss = []
     accuracy = []
     seg_loss = []
     class_loss = []
-    class_loss_sent = []
-    class_consistency_loss = []
-    accuracy_sent = []
-    print('epoch  step    loss   seg    class consistency  accuracy')
+    consistency_loss = []
+    print('epoch  step    loss   seg  class const  accuracy')
     
     start_time = time.time()
     for batch_id, (label_minibatch, unlabel_minibatch)  in enumerate(zip(cycle(labeled_train_loader), unlabeled_train_loader)):
@@ -267,23 +422,20 @@ def train(model, labeled_train_loader, unlabeled_train_loader, optimizer, epoch,
         if (batch_id + 1) % 100 == 0:
             r = (1. * batch_id + (epoch - 1) * steps) / (30 * steps)
 
-        output, predicted_action, segmentation, action, loss, s_loss, c_loss, cc_loss = train_model_interface(label_minibatch, unlabel_minibatch, wt_seg, wt_cls, wt_cons_cls, 
-                                                                                                                const_loss, r)
+        output, predicted_action, segmentation, action, loss, s_loss, c_loss, cc_loss = train_model_interface(args, label_minibatch, unlabel_minibatch, epoch)
 
         loss.backward()
         optimizer.step()
 
         total_loss.append(loss.item())
-        # print(len(total_loss))
         seg_loss.append(s_loss.item())
         class_loss.append(c_loss.item())
-        class_consistency_loss.append(cc_loss.item())
+        consistency_loss.append(cc_loss.item())
         accuracy.append(get_accuracy(predicted_action, action))
 
         report_interval = 10
         if (batch_id + 1) % report_interval == 0:
             r_total = np.array(total_loss).mean()
-            # print(r_total)
             r_seg = np.array(seg_loss).mean()
             r_class = np.array(class_loss).mean()
             r_cc_class = np.array(class_consistency_loss).mean()
@@ -296,7 +448,7 @@ def train(model, labeled_train_loader, unlabeled_train_loader, optimizer, epoch,
                 'loss': r_total,
                 'loss_seg': r_seg,
                 'loss_cls': r_class,
-                'loss_cls_consistency':r_cc_class
+                'loss_consistency':r_cc_class
             }
             info_acc = {
             'acc': r_acc
@@ -315,14 +467,11 @@ def train(model, labeled_train_loader, unlabeled_train_loader, optimizer, epoch,
     torch.save(model.state_dict(), save_path+".pth")
     print('saved weights to ', save_path+".pth")
     train_total_loss = np.array(total_loss).mean()
-    # print(train_total_loss)
-    # exit()
     return r, train_total_loss
 
 
 def validate(model, val_data_loader, epoch, short=False):
     steps = len(val_data_loader)
-    # print('validation: batch size ', VAL_BATCH_SIZE, ' ', N_EPOCHS, 'epochs', steps, ' steps ')
     model.eval()
     model.training = False
     total_loss = []
@@ -359,7 +508,7 @@ def validate(model, val_data_loader, epoch, short=False):
 
             truth_np = segmentation.cpu().data.numpy()
             for a in range(minibatch['data'].shape[0]):
-                iou = utils.IOU2(truth_np[a], maskout_np[a])
+                iou = IOU2(truth_np[a], maskout_np[a])
                 if iou == iou:
                     total_IOU += iou
                     validiou += 1
@@ -396,7 +545,7 @@ def parse_args():
     parser.add_argument('--const_loss', type=str, help='consistency loss type')
     parser.add_argument('--wt_seg', type=float, default=1, help='segmentation loss weight')
     parser.add_argument('--wt_cls', type=float, default=1, help='Classification loss weight')
-    parser.add_argument('--wt_cons_cls', type=float, default=1, help='class consistency loss weight')
+    parser.add_argument('--wt_cons', type=float, default=1, help='class consistency loss weight')
     parser.add_argument('--seed', type=int, default=47, help='seed for initializing training.')
     # parser.add_argument('--pretrained', type=bool, )
     args = parser.parse_args()
@@ -504,7 +653,7 @@ if __name__ == '__main__':
     # scheduler = CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=20, cycle_mult=1.0, max_lr=0.001, min_lr=0.000001, warmup_steps=5, gamma=0.1)
     
     exp_id = args.exp_id
-    save_path = os.path.join('/home/akumar/activity_detect/caps_net/exp_4_data_aug/new_train_log_wts', exp_id)
+    save_path = os.path.join('/home/akumar/activity_detect/caps_net/exp_4_data_aug/train_log_wts', exp_id)
     model_save_dir = os.path.join(save_path,time.strftime('%m-%d-%H-%M'))
     writer = SummaryWriter(model_save_dir)
     if not os.path.exists(model_save_dir):
@@ -519,7 +668,7 @@ if __name__ == '__main__':
     r = 0
     for e in tqdm(range(1, N_EPOCHS + 1)):
         
-        r, train_loss = train(model, labeled_train_data_loader, unlabeled_train_data_loader, optimizer, e, r, save_path, writer, args.wt_seg, args.wt_cls, args.wt_cons_cls, args.const_loss, short=False)
+        r, train_loss = train(args, model, labeled_train_data_loader, unlabeled_train_data_loader, optimizer, e, r, save_path, writer, short=False)
 
         val_loss = validate(model, val_data_loader, e, short=False)
         if val_loss < prev_best_val_loss:
@@ -540,10 +689,6 @@ if __name__ == '__main__':
                 os.remove(prev_best_train_loss_model_path)
             prev_best_train_loss_model_path = train_model_path
         scheduler.step(train_loss);
-
-        # if prev_wt_cons_loss!= wt_cons_cls:
-        #     prev_wt_cons_loss = wt_cons_cls
-        #     print("weight of consistency loss changing to: ", prev_wt_cons_loss)
 
         if e % 20 == 0:
             checkpoints = os.path.join(model_save_dir, f'model_{e}.pth')
@@ -568,7 +713,6 @@ def multi_pixelwise_uncertainty(pred, aug_pred):
 
     # visualize_clips(total_pred[0], 0, 'sum_pred_mask_temp')
     # print(total_pred.shape)
-    # exit()
 
     batch_variance = np.zeros((8, 1, 8, 224, 224))
 
@@ -594,7 +738,6 @@ def multi_pixelwise_uncertainty(pred, aug_pred):
             # svm = sns.heatmap(df_cm, annot=True,cmap='coolwarm', linecolor='white', linewidths=1)
             # figure = svm.get_figure()    
             # figure.savefig('svm_conf.png', dpi=400)
-            # exit()
             # temp_var = np.reshape(temp_var, (1, temp_var.shape[0], temp_var.shape[1], temp_var.shape[2]))
             clip_variance[temp_cnt] = temp_var
         # print(clip_variance.shape)
