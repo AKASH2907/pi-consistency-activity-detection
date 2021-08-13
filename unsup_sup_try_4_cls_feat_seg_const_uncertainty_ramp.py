@@ -30,7 +30,7 @@ from datasets.ucf_dataloader import UCF101DataLoader
 
 from utils.losses import SpreadLoss, DiceLoss, IoULoss, weighted_mse_loss
 from utils.metrics import get_accuracy, IOU2
-from utils.helpers import measure_pixelwise_uncertainty_v2
+from utils.helpers import measure_pixelwise_uncertainty, val_model_interface
 from utils import ramp_ups
 
 
@@ -47,7 +47,7 @@ def val_model_interface(minibatch):
     seg_loss = loss1
     total_loss =  seg_loss + class_loss
     return (output, predicted_action, segmentation, action, total_loss, seg_loss, class_loss)
-    
+
 
 def train_model_interface(args, label_minibatch, unlabel_minibatch, wt_ramp):
     label_data = label_minibatch['data'].type(torch.cuda.FloatTensor)
@@ -123,7 +123,6 @@ def train_model_interface(args, label_minibatch, unlabel_minibatch, wt_ramp):
     #     Equal weighted MSE Loss      #
     ####################################
     # if epoch<15:
-    # CHECKED - THIS OUTPUTS SAME AS - nn.MSELoss()
     equal_wt = torch.ones_like(output, dtype=torch.double)
     equal_wt = equal_wt.type(torch.cuda.FloatTensor)
     loss_wt_1 = weighted_mse_loss(flipped_pred_seg_map, output, equal_wt)
@@ -132,7 +131,7 @@ def train_model_interface(args, label_minibatch, unlabel_minibatch, wt_ramp):
     ####################################
     #        Weighted MSE Loss         #
     ####################################
-    batch_variance = measure_pixelwise_uncertainty_v2(output)
+    batch_variance = measure_pixelwise_uncertainty(output)
     batch_variance = batch_variance.type(torch.cuda.FloatTensor)
     loss_wt_2 = weighted_mse_loss(flipped_pred_seg_map, output, batch_variance)
 
@@ -146,10 +145,10 @@ def train_model_interface(args, label_minibatch, unlabel_minibatch, wt_ramp):
     seg_loss = seg_loss_2 + seg_loss_1
 
     # keep consistency weight consistent throughout the training
-    total_loss = args.wt_seg * seg_loss + args.wt_cls * class_loss + args.wt_cons * total_cons_loss
+    # total_loss = args.wt_seg * seg_loss + args.wt_cls * class_loss + args.wt_cons * total_cons_loss
 
     # keep consistency weight ramping up
-    # total_loss = args.wt_seg * seg_loss + args.wt_cls * class_loss + wt_ramp * total_cons_loss
+    total_loss = args.wt_seg * seg_loss + args.wt_cls * class_loss + wt_ramp * total_cons_loss
 
 
     return (output, predicted_action, concat_seg, concat_action, total_loss, seg_loss, class_loss, total_cons_loss, total_cls_cons_loss, total_seg_cons_loss)
