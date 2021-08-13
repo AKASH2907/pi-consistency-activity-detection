@@ -221,28 +221,23 @@ def measure_pixelwise_uncertainty(pred, debug=False):
             #####################################################
 
             clip_variance[temp_cnt] = temp_var
-        clip_variance = np.reshape(clip_variance, (1, clip_variance.shape[0], clip_variance.shape[1], clip_variance.shape[2]))
 
+        clip_variance = np.reshape(clip_variance, (1, clip_variance.shape[0], clip_variance.shape[1], clip_variance.shape[2]))
         batch_variance[zz] = clip_variance
-    # print(batch_variance.min(), batch_variance.max())
-    # batch_variance -= batch_variance.min()
-    # batch_variance /= (batch_variance.max() - batch_variance.min())
-    # print(batch_variance.min(), batch_variance.max())
-    # exit()
+
     batch_variance = torch.from_numpy(batch_variance)
 
     return batch_variance
 
 
-def measure_pixelwise_uncertainty_v2(pred, debug=False):
+def measure_pixelwise_uncertainty_v2(pred):
     count = 0
     batch_variance = np.zeros_like(pred.cpu().detach().numpy(), dtype=np.float64)
-    # print(batch_variance.dtype)
+
     for zz in range(0, pred.shape[0]):
         m_temp = pred[zz][0]
         clip_variance = np.zeros_like(batch_variance[0][0])
-        # print(batch_variance.shape, batch_variance.dtype, clip_variance.shape, clip_variance.dtype)
-        for temp_cnt in range(8):
+        for temp_cnt in range(clip_variance.shape[0]):
             if temp_cnt-1<0:
                 temp_var = m_temp[temp_cnt:temp_cnt+2]
             elif temp_cnt+1>7:
@@ -250,42 +245,14 @@ def measure_pixelwise_uncertainty_v2(pred, debug=False):
             else:
                 temp_var = m_temp[temp_cnt-1:temp_cnt+2]
 
-            # heatmap visualize
             temp_var = np.var(temp_var.cpu().detach().numpy(), axis=0)
-            # print(temp_var.max(), temp_var.min())
             temp_var -= temp_var.min()
             temp_var /= (temp_var.max() - temp_var.min())
 
-            #####################################################
-            # Adaptive approach to flip after few epochs
-            # not giving any boost to simple uncertain so remove it
-            # for now later look into it
-            #####################################################
-            # if epoch<5:
-            # temp_var = 1 - temp_var
-            # print("normalized", temp_var.max(), temp_var.min())
-            #####################################################
-
-            #####################################################
-            # VISUALIZE HEAT MAP
-            if debug:
-                print("Analyze the uncertain regions in heatmaps")
-                print(temp_var.shape, int(temp_var.max()*255), int(temp_var.min()*255))
-                heatmap_img = (temp_var*255).astype(np.uint8)
-                heatmap_img = cv2.applyColorMap(heatmap_img, cv2.COLORMAP_JET)
-                cv2.imwrite("heatmap_uncertain_normalize_neg.png", heatmap_img)
-                exit()
-            #####################################################
-
             clip_variance[temp_cnt] = temp_var
-        clip_variance = np.reshape(clip_variance, (1, clip_variance.shape[0], clip_variance.shape[1], clip_variance.shape[2]))
 
+        clip_variance = np.reshape(clip_variance, (1, clip_variance.shape[0], clip_variance.shape[1], clip_variance.shape[2]))
         batch_variance[zz] = clip_variance
-    # print(batch_variance.min(), batch_variance.max())
-    # batch_variance -= batch_variance.min()
-    # batch_variance /= (batch_variance.max() - batch_variance.min())
-    # print(batch_variance.min(), batch_variance.max())
-    # exit()
     batch_variance = torch.from_numpy(batch_variance)
 
     return batch_variance
@@ -409,7 +376,6 @@ def train(args, model, labeled_train_loader, unlabeled_train_loader, optimizer, 
     seg_loss = []
     class_loss = []
     consistency_loss = []
-    print('epoch  step    loss   seg  class const  accuracy')
     
     start_time = time.time()
     for batch_id, (label_minibatch, unlabel_minibatch)  in enumerate(zip(cycle(labeled_train_loader), unlabeled_train_loader)):
@@ -433,14 +399,14 @@ def train(args, model, labeled_train_loader, unlabeled_train_loader, optimizer, 
         consistency_loss.append(cc_loss.item())
         accuracy.append(get_accuracy(predicted_action, action))
 
-        report_interval = 10
-        if (batch_id + 1) % report_interval == 0:
+        if (batch_id + 1) % args.pf == 0:
             r_total = np.array(total_loss).mean()
             r_seg = np.array(seg_loss).mean()
             r_class = np.array(class_loss).mean()
-            r_cc_class = np.array(class_consistency_loss).mean()
+            r_const = np.array(consistency_loss).mean()
             r_acc = np.array(accuracy).mean()
-            print('%d/%d  %d/%d  %.3f  %.3f %.3f %.3f  %.3f'%(epoch,N_EPOCHS,batch_id + 1,steps,r_total,r_seg,r_class, r_cc_class, r_acc))
+            print(f'[TRAIN] epoch-{epoch}/{N_EPOCHS}, batch-{batch_id+1}/{steps}, loss-{r_total:.3f}, acc-{r_acc:.3f}' \
+                f'\t [LOSS ] cls-{r_class:.3f}, seg-{r_seg:.3f}, const-{r_const:.3f}')
 
             # summary writing
             total_step = (epoch-1)*len(unlabeled_train_loader) + batch_id + 1
@@ -448,7 +414,7 @@ def train(args, model, labeled_train_loader, unlabeled_train_loader, optimizer, 
                 'loss': r_total,
                 'loss_seg': r_seg,
                 'loss_cls': r_class,
-                'loss_consistency':r_cc_class
+                'loss_consistency':r_const
             }
             info_acc = {
             'acc': r_acc
@@ -523,7 +489,7 @@ def validate(model, val_data_loader, epoch, short=False):
     r_class = np.array(class_loss).mean()
     r_acc = np.array(accuracy).mean()
     average_IOU = total_IOU / validiou
-    print('Validation %d  %.3f  %.3f  %.3f  %.3f IOU %.3f' % (epoch, r_total, r_seg, r_class, r_acc, average_IOU))
+    print(f'[VAL] epoch-{epoch}, loss-{r_total:.3f}, acc-{r_acc:.3f} [IOU ] {average_IOU:.3f}')    
     sys.stdout.flush()
     return r_total
 
@@ -536,10 +502,11 @@ def parse_args():
     parser.add_argument('--epochs', type=int, default=1, help='number of total epochs to run')
     parser.add_argument('--model_name', type=str, default='i3d', help='model name')
     parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
+    parser.add_argument('--pf', type=int, default=50, help='print frequency every batch')
     parser.add_argument('--pretrained', type=bool, default=True, help='loading pretrained model')
     parser.add_argument('--seg_loss', type=str, default='dice', help='dice or iou loss')
     # parser.add_argument('--log', type=str, default='log_prp', help='log directory')
-    parser.add_argument('--exp_id', type=str, default='loss_checks', help='experiment name')
+    parser.add_argument('--exp_id', type=str, default='debug', help='experiment name')
     parser.add_argument('--pkl_file_label', type=str, help='experiment name')
     parser.add_argument('--pkl_file_unlabel', type=str, help='experiment name')
     parser.add_argument('--const_loss', type=str, help='consistency loss type')
@@ -581,13 +548,12 @@ if __name__ == '__main__':
     percent = str(100)
     args.pkl_file_label = "train_annots_10_labeled_random.pkl"
     args.pkl_file_unlabel = "train_annots_90_unlabeled_random.pkl"
-    # labeled_trainset = UCF101DataLoader('train', [224, 224], TRAIN_BATCH_SIZE, file_id=args.pkl_file_label, percent=percent, use_random_start_frame=False)
+    
     labeled_trainset = UCF101DataLoader('train', [224, 224], batch_size=4, file_id=args.pkl_file_label, percent=percent, use_random_start_frame=False)
-
     unlabeled_trainset = UCF101DataLoader('train', [224, 224], batch_size=12, file_id=args.pkl_file_unlabel, percent=percent, use_random_start_frame=False)
-
     validationset = UCF101DataLoader('validation',[224, 224], VAL_BATCH_SIZE, file_id="test_annots.pkl", use_random_start_frame=False)
     print(len(labeled_trainset), len(unlabeled_trainset), len(validationset))
+    
     labeled_train_data_loader = DataLoader(
         dataset=labeled_trainset,
         batch_size=TRAIN_BATCH_SIZE//2,
@@ -671,14 +637,14 @@ if __name__ == '__main__':
         r, train_loss = train(args, model, labeled_train_data_loader, unlabeled_train_data_loader, optimizer, e, r, save_path, writer, short=False)
 
         val_loss = validate(model, val_data_loader, e, short=False)
-        if val_loss < prev_best_val_loss:
-            print("Yay!!! Got the val loss down...")
-            val_model_path = os.path.join(model_save_dir, f'best_model_val_loss_{e}.pth')
-            torch.save(model.state_dict(), val_model_path)
-            prev_best_val_loss = val_loss;
-            if prev_best_val_loss_model_path:
-                os.remove(prev_best_val_loss_model_path)
-            prev_best_val_loss_model_path = val_model_path
+        # if val_loss < prev_best_val_loss:
+        #     print("Yay!!! Got the val loss down...")
+        #     val_model_path = os.path.join(model_save_dir, f'best_model_val_loss_{e}.pth')
+        #     torch.save(model.state_dict(), val_model_path)
+        #     prev_best_val_loss = val_loss;
+        #     if prev_best_val_loss_model_path:
+        #         os.remove(prev_best_val_loss_model_path)
+        #     prev_best_val_loss_model_path = val_model_path
 
         if train_loss < prev_best_train_loss:
             print("Yay!!! Got the train loss down...")

@@ -58,6 +58,35 @@ def measure_pixelwise_uncertainty(pred, debug=False):
     return batch_variance
 
 
+def measure_pixelwise_uncertainty_v2(pred):
+    count = 0
+    batch_variance = np.zeros_like(pred.cpu().detach().numpy(), dtype=np.float64)
+
+    for zz in range(0, pred.shape[0]):
+        m_temp = pred[zz][0]
+        clip_variance = np.zeros_like(batch_variance[0][0])
+        for temp_cnt in range(clip_variance.shape[0]):
+            if temp_cnt-1<0:
+                temp_var = m_temp[temp_cnt:temp_cnt+2]
+            elif temp_cnt+1>(clip_variance.shape[0] - 1):
+                temp_var = m_temp[temp_cnt-1:]
+            else:
+                temp_var = m_temp[temp_cnt-1:temp_cnt+2]
+
+            temp_var = np.var(temp_var.cpu().detach().numpy(), axis=0)
+            temp_var -= temp_var.min()
+            temp_var /= (temp_var.max() - temp_var.min())
+
+            clip_variance[temp_cnt] = temp_var
+
+        clip_variance = np.reshape(clip_variance, (1, clip_variance.shape[0], clip_variance.shape[1], clip_variance.shape[2]))
+        batch_variance[zz] = clip_variance
+    batch_variance = torch.from_numpy(batch_variance)
+
+    return batch_variance
+
+
+
 def enable_dropout(model):
     """ Function to enable the dropout layers during test-time """
     for m in model.modules():

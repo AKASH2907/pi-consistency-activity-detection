@@ -99,12 +99,16 @@ class UCF101DataLoader(Dataset):
         # print(f'Bbox shape:  {bbox_clip.shape}')
         # print(f'Annotated frames: {annot_frames}')
         # print(f'Video label: {label}') 
+        # labeled_vid)
+        # exit()
         if clip is None:
             video_rgb = np.transpose(video_rgb, [3, 0, 1, 2])  #moving channels to first position
             video_rgb = torch.from_numpy(video_rgb)            
             label_cls = np.transpose(label_cls, [3, 0, 1, 2])
             label_cls = torch.from_numpy(label_cls)
-            sample = {'data':video_rgb,'segmentation':label_cls,'action':torch.Tensor([0]), 'flip_data': video_rgb, 'flip_label': label_cls, 'label_vid':labeled_vid}
+            sample = {'data':video_rgb,'segmentation':label_cls,'action':torch.Tensor([0]), 'label_vid': labeled_vid}
+            # sample = {'data':video_rgb,'segmentation':label_cls,'action':torch.Tensor([0]), 'aug_data': video_rgb, 'aug_label': label_cls, 'label_vid': labeled_vid, 'aug_type': torch.Tensor([0])}
+
             return sample
 
         #vlen = clip.shape[0]
@@ -121,7 +125,9 @@ class UCF101DataLoader(Dataset):
                 label_cls = np.transpose(label_cls, [3, 0, 1, 2])
                 label_cls = torch.from_numpy(label_cls)
                 # print("---------NOBBOXERR-----------")
-                sample = {'data':video_rgb,'segmentation':label_cls,'action':torch.Tensor([0]), 'flip_data': video_rgb, 'flip_label': label_cls, 'label_vid':labeled_vid}
+                sample = {'data':video_rgb,'segmentation':label_cls,'action':torch.Tensor([0]), 'label_vid': labeled_vid}
+                # sample = {'data':video_rgb,'segmentation':label_cls,'action':torch.Tensor([0]), 'aug_data': video_rgb, 'aug_label': label_cls, 'label_vid': labeled_vid, 'aug_type': torch.Tensor([0])}
+
                 return sample
             annot_idx = np.random.randint(0,len(annot_frames))
             selected_annot_frame = annot_frames[annot_idx]
@@ -140,7 +146,9 @@ class UCF101DataLoader(Dataset):
             video_rgb = torch.from_numpy(video_rgb)            
             label_cls = np.transpose(label_cls, [3, 0, 1, 2])
             label_cls = torch.from_numpy(label_cls)
-            sample = {'data':video_rgb,'segmentation':label_cls,'action':torch.Tensor([0]), 'flip_data': video_rgb, 'flip_label': label_cls, 'label_vid': labeled_vid}
+            sample = {'data':video_rgb,'segmentation':label_cls,'action':torch.Tensor([0]), 'label_vid': labeled_vid}
+
+            # sample = {'data':video_rgb,'segmentation':label_cls,'action':torch.Tensor([0]), 'aug_data': video_rgb, 'aug_label': label_cls, 'label_vid': labeled_vid, 'aug_type': torch.Tensor([0])}
             return sample
         if start_frame + (depth * vskip) >= vlen:
             start_frame = vlen - (depth * vskip)
@@ -202,34 +210,66 @@ class UCF101DataLoader(Dataset):
         # print(video_rgb.shape)
         # exit()
         # VIDEO RGB has been cropped -> 224, 224
-        # HORIZONTAL FLIPPING
-        # print("--------")
+        # HORIZONTAL FLIPPING        
+
+        # random_aug = torch.randint(1, 4, (1,))
+        # print(random_aug, type(random_aug))
+        # random_aug = 4
         # print(video_rgb.shape, label_cls.shape)
-        horizontal_flipped_video = video_rgb[:, :, ::-1, :]
-        horizontal_flipped_label_cls = label_cls[:,:,::-1,:]
-        # print(video_rgb[0, 0, 0, 0])
+        # exit()
+        # print("**************")
+        # print(video_rgb.shape, label_cls.shape)
 
-        # ROTATION OF VIDEOS
+        # anticlockwise rotation with np.rot90
+        # if random_aug == 1:
 
+        #     # horizontal_flipped_video = video_rgb[:, :, ::-1, :]
+        #     # horizontal_flipped_label_cls = label_cls[:,:,::-1,:]
+
+        #     aug_video = video_rgb[:, :, ::-1, :]
+        #     aug_label_cls = label_cls[:,:,::-1,:]
+        #     # print(aug_video.shape, aug_label_cls.shape)
+        # elif random_aug == 2:  #270 degrees rotation
+        #     # print(video_rgb.shape, label_cls.shape)
+        #     aug_video = np.rot90(video_rgb, 1, (1, 2))
+        #     aug_label_cls = np.rot90(label_cls, 1, (1, 2))
+        #     # print(aug_video.shape, aug_label_cls.shape)
+
+        # elif random_aug == 3:  #90 degrees rotation
+        #     # print(video_rgb.shape, label_cls.shape)
+        #     aug_video = np.rot90(video_rgb, 3, (1, 2))
+        #     aug_label_cls = np.rot90(label_cls, 3, (1, 2))
+
+
+        # aug_video = np.transpose(horizontal_flipped_video, [3, 0, 1, 2])
+        # aug_video = torch.from_numpy(horizontal_flipped_video.copy())
+        # aug_label_cls = np.transpose(horizontal_flipped_label_cls, [3, 0, 1, 2])
+        # aug_label_cls = torch.from_numpy(horizontal_flipped_label_cls.copy())
         video_rgb = np.transpose(video_rgb, [3, 0, 1, 2])  #moving channels to first position
         video_rgb = torch.from_numpy(video_rgb)
-        
         label_cls = np.transpose(label_cls, [3, 0, 1, 2])
         label_cls = torch.from_numpy(label_cls)
 
-        horizontal_flipped_video = np.transpose(horizontal_flipped_video, [3, 0, 1, 2])
-        horizontal_flipped_video = torch.from_numpy(horizontal_flipped_video.copy())
-
-        horizontal_flipped_label_cls = np.transpose(horizontal_flipped_label_cls, [3, 0, 1, 2])
-        horizontal_flipped_label_cls = torch.from_numpy(horizontal_flipped_label_cls.copy())
+        # aug_video = np.transpose(aug_video, [3, 0, 1, 2])
+        # aug_video = torch.from_numpy(aug_video.copy())
+        # aug_label_cls = np.transpose(aug_label_cls, [3, 0, 1, 2])
+        # aug_label_cls = torch.from_numpy(aug_label_cls.copy())
 
         
-        action_tensor = torch.Tensor([label])
+        action_tensor = torch.Tensor([label])   
+        vid_lab_unlab = torch.Tensor([labeled_vid])
+        # print(v_name, vid_lab_unlab)
+        # print(len(vid_lab_unlab))
+        # if len(vid_lab_unlab)<1: print(v_name)
+        # exit()
+        #pdb.set_trace()
+        # sample = {'data':video_rgb,'segmentation':label_cls,'action':action_tensor, 'video_label_avail': vid_lab_unlab}
+        sample = {'data':video_rgb,'segmentation':label_cls,'action':action_tensor,'label_vid': labeled_vid}
 
-        # sample = {'data':video_rgb,'segmentation':label_cls,'action':action_tensor, "flip_data":horizontal_flipped_video, "flip_label": horizontal_flipped_label_cls}
-        sample = {'data':video_rgb,'segmentation':label_cls,'action':action_tensor, "flip_data":horizontal_flipped_video, "flip_label": horizontal_flipped_label_cls, 
-        "label_vid": labeled_vid}
-
+        # sample = {'data':video_rgb,'segmentation':label_cls,'action':action_tensor, "aug_data":aug_video, "aug_label": aug_label_cls, 'label_vid': labeled_vid, 'aug_type': random_aug}
+        # if 'video_label_avail' in sample:
+            # print("true")
+            # exit()
         return sample
 
 
@@ -257,14 +297,10 @@ class UCF101DataLoader(Dataset):
         # print(annotations[5])
         # exit()
         for ann in annotations:
-            # print(len(ann))
-            # break
             # print("*********",ann[4])
-            #if len(ann)<5:
-            #    print("video_name:", video_name)
-            # print((ann))
+            if len(ann)<5:
+                print("video_name:", video_name)
             # labeled_vid = ann[5]
-            # print(ann[0], ann[1], ann[2], ann[5])
             multi_frame_annot.extend(ann[4])
             start_frame, end_frame, label, labeled_vid = ann[0], ann[1], ann[2], ann[5]
             collect_annots = []
@@ -334,9 +370,11 @@ if __name__ == '__main__':
     index = 0
     while True:
         data = dataloader.__getitem__(index)
-        print(data['action'])
-        print(data['data'].shape)
-        print(data['segmentation'].shape)
+        # print(data['action'])
+        # print(data['data'].shape)
+        # print(data['segmentation'].shape)
+
+        # exit()
 
         clip = data['data']
         clip = clip.numpy()
@@ -346,20 +384,20 @@ if __name__ == '__main__':
         clip_mask = clip_mask.numpy()
         clip_mask = np.transpose(clip_mask, [1, 2, 3, 0])
 
-        flipped_clip = data['flip_data']
+        flipped_clip = data['aug_data']
         flipped_clip = flipped_clip.numpy()
         flipped_clip = np.transpose(flipped_clip, [1, 2, 3, 0])
 
-        flip_mask = data['flip_label']
+        flip_mask = data['aug_label']
         flip_mask = flip_mask.numpy()
         flip_mask = np.transpose(flip_mask, [1, 2, 3, 0])
 
-        diff2 = torch.sub(data['segmentation'], data['flip_label'])
-        diff2 = diff2.numpy()
-        diff2 = np.transpose(diff2, [1, 2, 3, 0])
-        print(clip_mask.shape, flip_mask.shape, np.sum(clip_mask), np.sum(flip_mask), np.unique(clip_mask))
-        print(clip_mask[0,:, :, 0])
-        exit()
+        # diff2 = torch.sub(data['segmentation'], data['aug_label'])
+        # diff2 = diff2.numpy()
+        # diff2 = np.transpose(diff2, [1, 2, 3, 0])
+        # print(clip_mask.shape, flip_mask.shape, np.sum(clip_mask), np.sum(flip_mask), np.unique(clip_mask))
+        # print(clip_mask[0,:, :, 0])
+
         #print(frm_idx)
         #pdb.set_trace()
 
@@ -377,36 +415,36 @@ if __name__ == '__main__':
         # print(np.sum(l2), np.unique(l2))
         # print(np.where(l2==1))
         # exit()
-        print(np.unique(diff2))
-        diff2 = np.abs(diff2)
-        print(np.sum(diff2))
-        corrected_mask = flip_mask[:, :, ::-1,:]
-        diff = np.subtract(clip_mask, flip_mask)
+        # print(np.unique(diff2))
+        # diff2 = np.abs(diff2)
+        # print(np.sum(diff2))
+        # corrected_mask = flip_mask[:, :, ::-1,:]
+        # diff = np.subtract(clip_mask, flip_mask)
         
 
-        diff = np.abs(diff)
+        # diff = np.abs(diff)
 
-        print(np.unique(diff), np.sum(diff))
-        with imageio.get_writer('./results/diff_{:02d}_gt.gif'.format(index), mode='I') as writer:
-            for i in range(diff.shape[0]):
-                image = (diff[i]*255).astype(np.uint8)
-                writer.append_data(image) 
-        with imageio.get_writer('./results/diff2_{:02d}_gt.gif'.format(index), mode='I') as writer:
-            for i in range(diff2.shape[0]):
-                image = (diff2[i]*255).astype(np.uint8)
-                writer.append_data(image) 
+        # print(np.unique(diff), np.sum(diff))
+        # with imageio.get_writer('./vis_dataloader/diff_{:02d}_gt.gif'.format(index), mode='I') as writer:
+        #     for i in range(diff.shape[0]):
+        #         image = (diff[i]*255).astype(np.uint8)
+        #         writer.append_data(image) 
+        # with imageio.get_writer('./results/diff2_{:02d}_gt.gif'.format(index), mode='I') as writer:
+        #     for i in range(diff2.shape[0]):
+        #         image = (diff2[i]*255).astype(np.uint8)
+        #         writer.append_data(image) 
         # exit()
-        with imageio.get_writer('./results/orig_{:02d}_gt.gif'.format(index), mode='I') as writer:
+        with imageio.get_writer('./vis_dataloader/rand_orig_mask_based_{:02d}_gt.gif'.format(index), mode='I') as writer:
             for i in range(clip.shape[0]):
                 image = (clip[i]*255).astype(np.uint8)
                 writer.append_data(image) 
-        with imageio.get_writer('./results/flip_{:02d}_gt.gif'.format(index), mode='I') as writer:
+        with imageio.get_writer('./vis_dataloader/rand_aug_mask_based_{:02d}_gt.gif'.format(index), mode='I') as writer:
             for i in range(flipped_clip.shape[0]):
                 image = (flipped_clip[i]*255).astype(np.uint8)
                 writer.append_data(image)
 
 
-        with imageio.get_writer('./results/orig_mask_{:02d}_gt.gif'.format(index), mode='I') as writer:
+        with imageio.get_writer('./vis_dataloader/rand_aug_mask_{:02d}_gt.gif'.format(index), mode='I') as writer:
             for i in range(clip.shape[0]):
                 image = (clip[i,:,:,0]*255).astype(np.uint8)
                 cl_mask = (clip_mask[i,:,:,0]*255).astype(np.uint8)
@@ -415,7 +453,7 @@ if __name__ == '__main__':
                 image = cv2.bitwise_and(image, image, mask=cl_mask)
                 writer.append_data(image) 
 
-        with imageio.get_writer('./results/flip_mask_{:02d}_gt.gif'.format(index), mode='I') as writer:
+        with imageio.get_writer('./vis_dataloader/rand_aug_mask_{:02d}_gt.gif'.format(index), mode='I') as writer:
             for i in range(flipped_clip.shape[0]):
                 image = (flipped_clip[i]*255).astype(np.uint8)
                 fl_mask = (flip_mask[i,:,:,0]*255).astype(np.uint8)

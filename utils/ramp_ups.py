@@ -65,8 +65,9 @@ def exp_warmup(rampup_length, rampdown_length, num_epochs):
 
 
 def test_warmup():
-    warmup = exp_warmup(80, 50, 100)
-    for ep in range(100):
+    # warmup = exp_warmup(80, 50, 100)
+    warmup = linear_rampup(50)
+    for ep in range(50):
         print(ep, warmup(ep))
 
-test_warmup()
+# test_warmup()

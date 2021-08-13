@@ -29,15 +29,22 @@ from datasets.ucf_dataloader import UCF101DataLoader
 
 from utils.losses import SpreadLoss, DiceLoss, IoULoss, weighted_mse_loss
 from utils.metrics import get_accuracy, IOU2
+# from utils.helpers import measure_pixelwise_uncertainty
 
 
 #####################################################
 '''
 Aim:
-    - In this code I simply start with localization consistency
+    - In this code I try to reduce variance temporally pixel-based approach
     
 Exp:
-    - Incorporate multiple losses -Done
+    - More weights to uncertain region - Done
+    - More weights to certain region - Done
+    - Adaptive approach inverse weightage after few epochs - Done
+    - We can do linear ramping kind of thing where we increase the weight of one and reduce of the opp - NOT WORTH IT
+    - DUMP ADAPTIVE THING - Negative is hurting
+    - 
+
 
 '''
 #####################################################
@@ -49,7 +56,7 @@ def val_model_interface(minibatch):
     segmentation = minibatch['segmentation']
 
     output, predicted_action, feat, _ = model(data, action)
-
+    
     class_loss, abs_class_loss = criterion_cls(predicted_action, action)
     loss1 = criterion_seg_1(output, segmentation.float().cuda())
     
@@ -57,7 +64,94 @@ def val_model_interface(minibatch):
     total_loss =  seg_loss + class_loss
     return (output, predicted_action, segmentation, action, total_loss, seg_loss, class_loss)
 
-def train_model_interface(args, label_minibatch, unlabel_minibatch):
+
+def measure_pixelwise_uncertainty(pred, debug=False):
+    count = 0
+    batch_variance = np.zeros((8, 1, 8, 224, 224))
+    # print(batch_variance.dtype)
+    for zz in range(0, pred.shape[0]):
+        m_temp = pred[zz][0]
+        clip_variance = np.zeros((8, 224, 224))
+        for temp_cnt in range(8):
+            if temp_cnt-1<0:
+                temp_var = m_temp[temp_cnt:temp_cnt+2]
+            elif temp_cnt+1>7:
+                temp_var = m_temp[temp_cnt-1:]
+            else:
+                temp_var = m_temp[temp_cnt-1:temp_cnt+2]
+
+            # heatmap visualize
+            temp_var = np.var(temp_var.cpu().detach().numpy(), axis=0)
+            # print(temp_var.max(), temp_var.min())
+            temp_var -= temp_var.min()
+            temp_var /= (temp_var.max() - temp_var.min())
+
+            #####################################################
+            # Adaptive approach to flip after few epochs
+            # not giving any boost to simple uncertain so remove it
+            # for now later look into it
+            #####################################################
+            # if epoch<5:
+            # temp_var = 1 - temp_var
+            # print("normalized", temp_var.max(), temp_var.min())
+            #####################################################
+
+            #####################################################
+            # VISUALIZE HEAT MAP
+            if debug:
+                print("Analyze the uncertain regions in heatmaps")
+                print(temp_var.shape, int(temp_var.max()*255), int(temp_var.min()*255))
+                heatmap_img = (temp_var*255).astype(np.uint8)
+                heatmap_img = cv2.applyColorMap(heatmap_img, cv2.COLORMAP_JET)
+                cv2.imwrite("heatmap_uncertain_normalize_neg.png", heatmap_img)
+                exit()
+            #####################################################
+
+            clip_variance[temp_cnt] = temp_var
+
+        clip_variance = np.reshape(clip_variance, (1, clip_variance.shape[0], clip_variance.shape[1], clip_variance.shape[2]))
+        batch_variance[zz] = clip_variance
+
+    batch_variance = torch.from_numpy(batch_variance)
+
+    return batch_variance
+
+
+def measure_pixelwise_uncertainty_v2(pred):
+    count = 0
+    batch_variance = np.zeros_like(pred.cpu().detach().numpy(), dtype=np.float64)
+
+    for zz in range(0, pred.shape[0]):
+        m_temp = pred[zz][0]
+        clip_variance = np.zeros_like(batch_variance[0][0])
+        for temp_cnt in range(clip_variance.shape[0]):
+            if temp_cnt-1<0:
+                temp_var = m_temp[temp_cnt:temp_cnt+2]
+            elif temp_cnt+1>7:
+                temp_var = m_temp[temp_cnt-1:]
+            else:
+                temp_var = m_temp[temp_cnt-1:temp_cnt+2]
+
+            temp_var = np.var(temp_var.cpu().detach().numpy(), axis=0)
+            temp_var -= temp_var.min()
+            temp_var /= (temp_var.max() - temp_var.min())
+
+            clip_variance[temp_cnt] = temp_var
+
+        clip_variance = np.reshape(clip_variance, (1, clip_variance.shape[0], clip_variance.shape[1], clip_variance.shape[2]))
+        batch_variance[zz] = clip_variance
+    batch_variance = torch.from_numpy(batch_variance)
+
+    return batch_variance
+    
+
+def train_model_interface(args, label_minibatch, unlabel_minibatch, epoch):
+    '''
+    :label_minibatch:
+
+
+    '''
+
     label_data = label_minibatch['data'].type(torch.cuda.FloatTensor)
     fl_label_data = label_minibatch['flip_data'].type(torch.cuda.FloatTensor)
 
@@ -102,6 +196,7 @@ def train_model_interface(args, label_minibatch, unlabel_minibatch):
     # SEG LOSS SUPERVISED
     labeled_op = output[labeled_vid_index]
     labeled_seg_data = concat_seg[labeled_vid_index]
+    # print(output.max(), output.min())
     seg_loss_1 = criterion_seg_1(labeled_op, labeled_seg_data.float().cuda())
     seg_loss_2 = criterion_seg_2(labeled_op, labeled_seg_data.float().cuda())
     
@@ -112,36 +207,40 @@ def train_model_interface(args, label_minibatch, unlabel_minibatch):
 
     # CONST LOSS
     flipped_pred_seg_map = torch.flip(flip_op, [4])
-    # flip_pen_segmap = torch.flip(flip_pen_segmap, [4])
-    # pen_segmap = torch.mean(pen_segmap, 1)
-    # flip_pen_segmap = torch.mean(flip_pen_segmap, 1)
-    # pen_segmap = torch.flip(pen_segmap, [4])
-    # print(pen_segmap.shape, flip_pen_segmap.shape)
-    # exit()
+    flip_pen_segmap = torch.flip(flip_pen_segmap, [4])
 
+    DEBUG = False
+    if DEBUG == True:
+        visualize_clips(concat_data[0], 0, 'clip')
+        visualize_clips(concat_seg[0], 0, 'mask')
 
-    # if const_loss == 'jsd':
-    #     consistency_criterion = torch.nn.KLDivLoss(size_average=False, reduce=False).cuda()
-    #     print(flipped_pred_seg_map.shape, flip_op.shape)
+    # batch_variance = measure_pixelwise_uncertainty(output)
+    # batch_variance = batch_variance.type(torch.cuda.FloatTensor)
+    # loss_wt = weighted_mse_loss(flipped_pred_seg_map, output, batch_variance)
+    
+    # if epoch<6:
+    #     equal_wt = torch.ones_like(output, dtype=torch.double)
+    #     equal_wt = equal_wt.type(torch.cuda.FloatTensor)
+    #     loss_wt = weighted_mse_loss(flipped_pred_seg_map, output, equal_wt)
 
-    #     print(flipped_pred_seg_map.max(), flipped_pred_seg_map.min(), flip_op.max(), flip_op.min())
-    #     flipped_pred_seg_map = torch.mean(flipped_pred_seg_map, 2)
-    #     flip_op = torch.mean(flip_op, 2)
+    # else:
 
-    #     flipped_pred_seg_map = torch.squeeze(flipped_pred_seg_map, 1)
-    #     flip_op = torch.squeeze(flip_op, 1)
+    batch_variance_orig_clip = measure_pixelwise_uncertainty_v2(output)
+    batch_variance_orig_clip = batch_variance_orig_clip.type(torch.cuda.FloatTensor)
+    loss_wt = weighted_mse_loss(flipped_pred_seg_map, output, batch_variance_orig_clip)
 
-    #     flip_op += 1e-7
-    #     flipped_pred_seg_map += 1e-7
-    #     cons_loss_a = consistency_criterion(flipped_pred_seg_map.log(), flip_op.detach()).sum(-1).mean()
-        # cons_loss_b = consistency_criterion(flip_op.log(), flipped_pred_seg_map.detach()).sum(-1).mean()
+    # batch_variance_aug_clip = measure_pixelwise_uncertainty(flipped_pred_seg_map)
+    # batch_variance_aug_clip = batch_variance_aug_clip.type(torch.cuda.FloatTensor)
+    # print('cuda device:', multi_batch_variance.dtype)
+    #####################################################
+    # The idea is that measure the uncertainty temporally and then use it as
+    # a weight. No need to take the uncertainty of augmented clip 
+    #####################################################
+    # print(batch_variance_orig_clip.shape)
+    
+    # print(equal_wt.shape)
 
-    cons_loss  = consistency_criterion(flipped_pred_seg_map, output)
-    total_cons_loss = cons_loss
-            
-    # LEARN THE SEG LOSS IN BETWEEN BCE AND IOU/DICE LOSS
-    # seg_wt_within = 0.2
-    # seg_loss = seg_wt_within* seg_loss_1 + (1 - seg_wt_within) *  seg_loss_2
+    total_cons_loss = loss_wt    
 
     seg_loss = seg_loss_1 + seg_loss_2
     total_loss = args.wt_seg * seg_loss + args.wt_cls * class_loss + args.wt_cons * total_cons_loss
@@ -152,19 +251,17 @@ def train_model_interface(args, label_minibatch, unlabel_minibatch):
 
 
 def train(args, model, labeled_train_loader, unlabeled_train_loader, optimizer, epoch, r, save_path, writer, short=False):
+    start_time = time.time()
+    steps = len(unlabeled_train_loader)
     model.train(mode=True)
     model.training = True
     total_loss = []
     accuracy = []
     seg_loss = []
     class_loss = []
-    class_loss_sent = []
-    class_consistency_loss = []
-    accuracy_sent = []
-    steps = len(unlabeled_train_loader)
-
-    start_time = time.time()
+    consistency_loss = []
     
+    start_time = time.time()
     for batch_id, (label_minibatch, unlabel_minibatch)  in enumerate(zip(cycle(labeled_train_loader), unlabeled_train_loader)):
         if short:
             print("this condition")
@@ -175,30 +272,26 @@ def train(args, model, labeled_train_loader, unlabeled_train_loader, optimizer, 
         if (batch_id + 1) % 100 == 0:
             r = (1. * batch_id + (epoch - 1) * steps) / (30 * steps)
 
-        output, predicted_action, segmentation, action, loss, s_loss, c_loss, cc_loss = train_model_interface(args, label_minibatch, unlabel_minibatch)
+        output, predicted_action, segmentation, action, loss, s_loss, c_loss, cc_loss = train_model_interface(args, label_minibatch, unlabel_minibatch, epoch)
 
         loss.backward()
         optimizer.step()
 
         total_loss.append(loss.item())
-        # print(len(total_loss))
         seg_loss.append(s_loss.item())
         class_loss.append(c_loss.item())
-        class_consistency_loss.append(cc_loss.item())
+        consistency_loss.append(cc_loss.item())
         accuracy.append(get_accuracy(predicted_action, action))
 
-        # report_interval = 10
         if (batch_id + 1) % args.pf == 0:
             r_total = np.array(total_loss).mean()
-            # print(r_total)
             r_seg = np.array(seg_loss).mean()
             r_class = np.array(class_loss).mean()
-            r_const = np.array(class_consistency_loss).mean()
+            r_const = np.array(consistency_loss).mean()
             r_acc = np.array(accuracy).mean()
-            # print('%d/%d  %d/%d  %.3f  %.3f %.3f %.3f  %.3f'%(epoch,N_EPOCHS,batch_id + 1,steps,r_total,r_seg,r_class, r_const, r_acc))
             print(f'[TRAIN] epoch-{epoch}/{N_EPOCHS}, batch-{batch_id+1}/{steps}, loss-{r_total:.3f}, acc-{r_acc:.3f}' \
                 f'\t [LOSS ] cls-{r_class:.3f}, seg-{r_seg:.3f}, const-{r_const:.3f}')
-            
+
             # summary writing
             total_step = (epoch-1)*len(unlabeled_train_loader) + batch_id + 1
             info_loss = {
@@ -218,17 +311,17 @@ def train(args, model, labeled_train_loader, unlabeled_train_loader, optimizer, 
     end_time = time.time()
     train_epoch_time = end_time - start_time
     print("Training time: ", train_epoch_time)
+    # r_total = np.array(total_loss).mean()
     
+    #file = 'weights' + str(epoch)
     torch.save(model.state_dict(), save_path+".pth")
     print('saved weights to ', save_path+".pth")
     train_total_loss = np.array(total_loss).mean()
-
     return r, train_total_loss
 
 
 def validate(model, val_data_loader, epoch, short=False):
     steps = len(val_data_loader)
-    # print('validation: batch size ', VAL_BATCH_SIZE, ' ', N_EPOCHS, 'epochs', steps, ' steps ')
     model.eval()
     model.training = False
     total_loss = []
@@ -247,7 +340,7 @@ def validate(model, val_data_loader, epoch, short=False):
                 if batch_id > 40:
                     break
             
-            output, predicted_action, segmentation, action, loss, s_loss, c_loss = val_model_interface(minibatch)
+            output, predicted_action, segmentation, action, loss, s_loss, c_loss = val_model_interface(minibatch, r)
             total_loss.append(loss.item())
             seg_loss.append(s_loss.item())
             class_loss.append(c_loss.item())
@@ -280,8 +373,7 @@ def validate(model, val_data_loader, epoch, short=False):
     r_class = np.array(class_loss).mean()
     r_acc = np.array(accuracy).mean()
     average_IOU = total_IOU / validiou
-    # print('Validation %d  %.3f  %.3f  %.3f  %.3f IOU %.3f' % (epoch, r_total, r_seg, r_class, r_acc, average_IOU))
-    print(f'[VAL] epoch-{epoch}, loss-{r_total:.3f}, acc-{r_acc:.3f} [IOU ] {average_IOU:.3f}')
+    print(f'[VAL] epoch-{epoch}, loss-{r_total:.3f}, acc-{r_acc:.3f} [IOU ] {average_IOU:.3f}')    
     sys.stdout.flush()
     return r_total
 
@@ -337,20 +429,15 @@ if __name__ == '__main__':
     seg_loss_criteria = args.seg_loss
 
     
+    percent = str(100)
     args.pkl_file_label = "train_annots_10_labeled_random.pkl"
     args.pkl_file_unlabel = "train_annots_90_unlabeled_random.pkl"
-
-    # label and unlabel training dataset load
-    labeled_trainset = UCF101DataLoader('train', [224, 224], batch_size=4, file_id=args.pkl_file_label, use_random_start_frame=False)
-    unlabeled_trainset = UCF101DataLoader('train', [224, 224], batch_size=12, file_id=args.pkl_file_unlabel, use_random_start_frame=False)
-
-    # test dataset load
-    validationset = UCF101DataLoader('validation',[224, 224], VAL_BATCH_SIZE, file_id="test_annots.pkl", use_random_start_frame=False)
     
+    labeled_trainset = UCF101DataLoader('train', [224, 224], batch_size=4, file_id=args.pkl_file_label, percent=percent, use_random_start_frame=False)
+    unlabeled_trainset = UCF101DataLoader('train', [224, 224], batch_size=12, file_id=args.pkl_file_unlabel, percent=percent, use_random_start_frame=False)
+    validationset = UCF101DataLoader('validation',[224, 224], VAL_BATCH_SIZE, file_id="test_annots.pkl", use_random_start_frame=False)
     print(len(labeled_trainset), len(unlabeled_trainset), len(validationset))
-
-
-    # label train dataloader
+    
     labeled_train_data_loader = DataLoader(
         dataset=labeled_trainset,
         batch_size=TRAIN_BATCH_SIZE//2,
@@ -358,7 +445,6 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    # unlabel train dataloader
     unlabeled_train_data_loader = DataLoader(
         dataset=unlabeled_trainset,
         batch_size=(TRAIN_BATCH_SIZE)//2,
@@ -366,7 +452,6 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    # validation dataloader
     val_data_loader = DataLoader(
         dataset=validationset,
         batch_size=VAL_BATCH_SIZE,
@@ -382,13 +467,13 @@ if __name__ == '__main__':
     if USE_CUDA:
         model = model.cuda()
     
-    # define losses
+    # losses
     global criterion_cls
     global criterion_seg_1
     global criterion_seg_2
     global consistency_criterion
     criterion_cls = SpreadLoss(num_class=24, m_min=0.2, m_max=0.9)
-    criterion_seg_1 = nn.BCEWithLogitsLoss(size_average=True)   # size_average will be deprecated use reduction=mean
+    criterion_seg_1 = nn.BCEWithLogitsLoss(size_average=True)
 
     if seg_loss_criteria == 'dice':
         criterion_seg_2 = DiceLoss()
@@ -411,9 +496,11 @@ if __name__ == '__main__':
     elif args.const_loss == 'iou':
         consistency_criterion = IoULoss()
 
-
     optimizer = optim.Adam(model.parameters(), lr=LR, weight_decay=0, eps=1e-6)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', min_lr=1e-7, patience=5, factor=0.1, verbose=True)
+
+    # optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=1e-5) # lr is min lr
+    # scheduler = CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=20, cycle_mult=1.0, max_lr=0.001, min_lr=0.000001, warmup_steps=5, gamma=0.1)
     
     exp_id = args.exp_id
     save_path = os.path.join('/home/akumar/activity_detect/caps_net/exp_4_data_aug/train_log_wts', exp_id)
@@ -429,7 +516,6 @@ if __name__ == '__main__':
     prev_best_val_loss_model_path = None
     prev_best_train_loss_model_path = None
     r = 0
-    
     for e in tqdm(range(1, N_EPOCHS + 1)):
         
         r, train_loss = train(args, model, labeled_train_data_loader, unlabeled_train_data_loader, optimizer, e, r, save_path, writer, short=False)
@@ -461,14 +547,82 @@ if __name__ == '__main__':
 
 
 
-
-
-
-
 '''
-# COnsistency loss for penultimate layer
-# cons_loss_2 = consistency_criterion(flip_pen_segmap, pen_segmap)
 
+
+def multi_pixelwise_uncertainty(pred, aug_pred):
+    # Calculating mean across multiple MCD forward passes 
+    # batch_mean, batch_variance = 0, 0
+    count = 0
+
+    # visualize_clips(pred[0], 0, 'pred_mask_temp')
+    # visualize_clips(aug_pred[0], 0, 'aug_pred_mask_temp')
+
+    aug_pred = torch.flip(aug_pred, [4])
+    total_pred = pred+ aug_pred
+
+    # visualize_clips(total_pred[0], 0, 'sum_pred_mask_temp')
+    # print(total_pred.shape)
+
+    batch_variance = np.zeros((8, 1, 8, 224, 224))
+
+    # print(batch_variance.shape)
+    for zz in range(0, pred.shape[0]):
+        # if zz-1<0:
+
+        m_temp = pred[zz][0]
+        # print(type(m_temp), m_temp.shape)
+        clip_variance = np.zeros((8, 224, 224))
+        for temp_cnt in range(8):
+            # print(temp_cnt)
+            if temp_cnt-1<0:
+                temp_var = m_temp[temp_cnt:temp_cnt+2]
+            elif temp_cnt+1>7:
+                temp_var = m_temp[temp_cnt-1:]
+            else:
+                temp_var = m_temp[temp_cnt-1:temp_cnt+2]
+
+            # heatmap visualize
+            temp_var = np.var(temp_var.cpu().detach().numpy(), axis=0)
+            # df_cm = pd.DataFrame((temp_var*255).astype(np.uint8))
+            # svm = sns.heatmap(df_cm, annot=True,cmap='coolwarm', linecolor='white', linewidths=1)
+            # figure = svm.get_figure()    
+            # figure.savefig('svm_conf.png', dpi=400)
+            # temp_var = np.reshape(temp_var, (1, temp_var.shape[0], temp_var.shape[1], temp_var.shape[2]))
+            clip_variance[temp_cnt] = temp_var
+        # print(clip_variance.shape)
+        clip_variance = np.reshape(clip_variance, (1, clip_variance.shape[0], clip_variance.shape[1], clip_variance.shape[2]))
+        # print(clip_variance.shape)
+            # print(clip_variance.max(), clip_variance.min())
+            # print(temp_var.shape, temp_var.max(), temp_var.min())
+
+        # this is numpy already change the visualize function
+        # visualize_clips(clip_variance, 0, 'clip_var')
+        # print(clip_variance.shape, type(clip_variance))
+
+        # clip_variance = torch.from_numpy(clip_variance)
+        # print(clip_variance.max(), clip_variance.min())
+        # print(clip_variance.shape, type(clip_variance))
+
+        batch_variance[zz] = clip_variance
+        # print(batch_variance.shape, batch_variance.max(), batch_variance.min())
+    # print(type(batch_variance), type(batch_variance[0]))
+    batch_variance = torch.from_numpy(batch_variance)
+
+    return batch_variance
+
+# mean = np.mean(m_temp.cpu().detach().numpy(), axis=0) # shape (n_samples, n_classes)
+# variance = np.var(m_temp.cpu().detach().numpy(), axis=0) # shape (n_samples, n_classes)
+
+# print(mean.shape, variance.shape)
+# mean_sum_clip = np.sum(mean)
+# var_sum_clip = np.sum(variance)
+
+# print(mean_sum_clip, var_sum_clip)
+# batch_mean += mean_sum_clip
+# batch_variance += var_sum_clip
+# print(count)
+# count+=1
 
 elif const_loss == 'dice':
     consistency_criterion = DiceLoss()
@@ -500,8 +654,6 @@ elif const_loss == 'l2_iou':
     cons_loss_2 = cc_iou(flipped_pred_seg_map, output)
 
     total_cons_loss = cons_loss_1 + cons_loss_2
-
-
 
 
 '''

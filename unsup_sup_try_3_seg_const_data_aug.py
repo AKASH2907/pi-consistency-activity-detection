@@ -29,6 +29,7 @@ from datasets.ucf_dataloader_aug_mod_1 import UCF101DataLoader
 
 from utils.losses import SpreadLoss, DiceLoss, IoULoss, weighted_mse_loss
 from utils.metrics import get_accuracy, IOU2
+from utils.helpers import measure_pixelwise_uncertainty
 
 
 #####################################################
@@ -241,7 +242,7 @@ def train(args, model, labeled_train_loader, unlabeled_train_loader, optimizer, 
     seg_loss = []
     class_loss = []
     class_loss_sent = []
-    class_consistency_loss = []
+    consistency_loss = []
     accuracy_sent = []
     print('epoch  step    loss   seg    class consistency  accuracy')
     
@@ -262,10 +263,9 @@ def train(args, model, labeled_train_loader, unlabeled_train_loader, optimizer, 
         optimizer.step()
 
         total_loss.append(loss.item())
-        # print(len(total_loss))
         seg_loss.append(s_loss.item())
         class_loss.append(c_loss.item())
-        class_consistency_loss.append(cc_loss.item())
+        consistency_loss.append(cc_loss.item())
         accuracy.append(get_accuracy(predicted_action, action))
 
         report_interval = 10
@@ -274,7 +274,7 @@ def train(args, model, labeled_train_loader, unlabeled_train_loader, optimizer, 
             # print(r_total)
             r_seg = np.array(seg_loss).mean()
             r_class = np.array(class_loss).mean()
-            r_cc_class = np.array(class_consistency_loss).mean()
+            r_cc_class = np.array(consistency_loss).mean()
             r_acc = np.array(accuracy).mean()
             print('%d/%d  %d/%d  %.3f  %.3f %.3f %.3f  %.3f'%(epoch,N_EPOCHS,batch_id + 1,steps,r_total,r_seg,r_class, r_cc_class, r_acc))
 
