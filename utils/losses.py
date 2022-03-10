@@ -19,25 +19,15 @@ class SpreadLoss(_Loss):
         b, E = x.shape
         assert E == self.num_class
         margin = self.m_min + (self.m_max - self.m_min) * r
-        # print('predictions', x[0])
-        # print('target',target[0])
-        # print('margin',margin)
-        # print('target',target.size())
 
         at = torch.cuda.FloatTensor(b).fill_(0)
         for i, lb in enumerate(target):
             at[i] = x[i][lb]
-            # print('an at value',x[i][lb])
         at = at.view(b, 1).repeat(1, E)
-        # print('at shape',at.shape)
-        # print('at',at[0])
 
         zeros = x.new_zeros(x.shape)
-        # print('zero shape',zeros.shape)
         absloss = torch.max(.9 - (at - x), zeros)
         loss = torch.max(margin - (at - x), zeros)
-        # print('loss',loss.shape)
-        # print('loss',loss)
         absloss = absloss ** 2
         loss = loss ** 2
         absloss = absloss.sum() / b - .9 ** 2
@@ -66,52 +56,6 @@ class DiceLoss(nn.Module):
         
         return 1 - dice
 
-class IoULoss(nn.Module):
-    def __init__(self, weight=None, size_average=True):
-        super(IoULoss, self).__init__()
-
-    def forward(self, inputs, targets, smooth=1):
-        
-        #comment out if your model contains a sigmoid or equivalent activation layer
-        inputs = F.sigmoid(inputs)       
-        
-        #flatten label and prediction tensors
-        inputs = inputs.view(-1)
-        targets = targets.view(-1)
-        
-        #intersection is equivalent to True Positive count
-        #union is the mutually inclusive area of all labels & predictions 
-        intersection = (inputs * targets).sum()
-        total = (inputs + targets).sum()
-        union = total - intersection 
-        
-        IoU = (intersection + smooth)/(union + smooth)
-                
-        return 1 - IoU
-
-
-ALPHA = 0.8
-GAMMA = 2
-
-class FocalLoss(nn.Module):
-    def __init__(self, weight=None, size_average=True):
-        super(FocalLoss, self).__init__()
-
-    def forward(self, inputs, targets, alpha=ALPHA, gamma=GAMMA, smooth=1):
-        
-        #comment out if your model contains a sigmoid or equivalent activation layer
-        inputs = F.sigmoid(inputs)       
-        
-        #flatten label and prediction tensors
-        inputs = inputs.view(-1)
-        targets = targets.view(-1)
-        
-        #first compute binary cross-entropy 
-        BCE = F.binary_cross_entropy(inputs, targets, reduction='mean')
-        BCE_EXP = torch.exp(-BCE)
-        focal_loss = alpha * (1-BCE_EXP)**gamma * BCE
-                       
-        return focal_loss
         
 
 class CapsuleLoss(nn.Module):
@@ -119,8 +63,6 @@ class CapsuleLoss(nn.Module):
         super(CapsuleLoss, self).__init__()
 
     def forward(self, labels, classes):
-        # print('labels',labels[0])
-        # print('predictions',classes[0])
         left = F.relu(0.9 - classes, inplace=True) ** 2
         right = F.relu(classes - 0.1, inplace=True) ** 2
 

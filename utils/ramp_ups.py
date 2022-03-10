@@ -64,9 +64,11 @@ def exp_warmup(rampup_length, rampdown_length, num_epochs):
     return warpper
 
 
-def test_warmup():
+# def test_warmup():
+if __name__ == '__main__':
     # warmup = exp_warmup(80, 50, 100)
-    warmup = linear_rampup(50)
+    warmup = exp_rampup(11)
+    warmup = linear_rampup(11)
     for ep in range(50):
         print(ep, warmup(ep))
 

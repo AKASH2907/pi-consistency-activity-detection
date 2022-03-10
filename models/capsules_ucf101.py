@@ -6,37 +6,6 @@ import math
 from models.pytorch_i3d import InceptionI3d
 from torchsummary import summary
 
-
-class primarySentenceCaps(nn.Module):
-    def __init__(self):
-        super(primarySentenceCaps, self).__init__()
-        # self.a = nn.Conv1d(in_channels=1, out_channels=1,
-        #                    kernel_size=16, stride=16, bias=True)
-        # self.a.weight.data.normal_(0.0, 0.1)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        # print('x ', x.sum())
-        p = x[:,0:128]
-        p = p.view(-1,16,8)
-        # print('p shape',p.size())
-        # x = x.view(-1,1,128)
-        # print('x shape ',x.shape)
-        a = x[:,128:136]
-        a = a.view(-1,1,8)
-        a = self.sigmoid(a)
-        # print('a shape',a.size())
-        # print('sentence activations', torch.sum(a[0]).item(), a[0].size())
-        # print('p shape ',p.shape)
-        # print('a shape ',a.shape)
-        out = torch.cat([p, a], dim=1)
-        # print('sentence out1',out.size())
-        out = out.permute(0, 2, 1)
-        # print('sentence out2',out.size())
-
-        # print('sentence out size ',out.shape)
-        return out
-
 #PrimaryCaps(832, 8, 9, P, stride=1)
 class PrimaryCaps(nn.Module):
     r"""Creates a primary convolutional capsule layer
@@ -331,15 +300,12 @@ class ConvCaps(nn.Module):
 
             p_in=p_in.view(b * oh * ow, self.K[0] * self.K[1] * self.B, self.psize)
             a_in = a_in.view(b * oh * ow, self.K[0] * self.K[1] * self.B, 1)
-            # p_in = p_in.view(b*oh*ow, self.K*self.K*self.B, self.psize)
-            # a_in = a_in.view(b*oh*ow, self.K*self.K*self.B, 1)
             v = self.transform_view(p_in, self.weights, self.C, self.P)
 
             # em_routing
             p_out, a_out = self.caps_em_routing(v, a_in, self.C, self.eps)
             p_out = p_out.view(b, oh, ow, self.C*self.psize)
             a_out = a_out.view(b, oh, ow, self.C)
-            # print('conv cap activations',a_out[0].sum().item(),a_out[0].size())
             out = torch.cat([p_out, a_out], dim=3)
         else:
             assert c == self.B*(self.psize+1)
@@ -368,30 +334,27 @@ class ConvCaps(nn.Module):
 class CapsNet(nn.Module):
 
 
-    def __init__(self, P=4, pretrained_load=False):
+    def __init__(self, pt_path='../weights/rgb_charades.pt', P=4, pretrained_load='i3d'):
         super(CapsNet, self).__init__()
         self.P = P
 
         
 
         self.conv1 = InceptionI3d(157, in_channels=3, final_endpoint='Mixed_4f')
-        if pretrained_load:
-            pt_path = '../weights/rgb_charades.pt'
-            pretrained_weights = torch.load(pt_path)
-            weights = self.conv1.state_dict()
-            loaded_layers = 0
-            for a in weights.keys():
-                if a in pretrained_weights.keys():
-                    weights[a] = pretrained_weights[a]
-                    loaded_layers += 1
-            self.conv1.load_state_dict(weights)
-            print("Loaded I3D pretrained weights from ", pt_path, " for layers: ", loaded_layers)
+        pretrained_weights = torch.load(pt_path)
+        weights = self.conv1.state_dict()
+        loaded_layers = 0
+        for name in weights.keys():
+            if name in pretrained_weights.keys():
+                weights[name] = pretrained_weights[name]
+                loaded_layers += 1
+
+        self.conv1.load_state_dict(weights)
+        print("Loaded I3D pretrained weights from ", pt_path, " for layers: ", loaded_layers)
 
         self.primary_caps = PrimaryCaps(832, 32, 9, P, stride=1)
-        #self.conv_caps = ConvCaps(16, 8, (1, 1), P, stride=(1, 1), iters=3)
         self.conv_caps = ConvCaps(32, 24, (1, 1), P, stride=(1, 1), iters=3)
 
-        #self.upsample1 = nn.ConvTranspose2d(128, 64, kernel_size=9, stride=1, padding=0)
         self.upsample1 = nn.ConvTranspose2d(384, 64, kernel_size=9, stride=1, padding=0)
         self.upsample1.weight.data.normal_(0.0, 0.02)
 
@@ -399,7 +362,6 @@ class CapsNet(nn.Module):
         self.upsample2.weight.data.normal_(0.0, 0.02)
 
 
-        #self.upsample3 = nn.ConvTranspose3d(128, 64, kernel_size=(3,3,3), stride=(1,2,2), padding=1,output_padding=(0,1,1))
         self.upsample3 = nn.ConvTranspose3d(128, 64, kernel_size=(3,3,3), stride=(2,2,2), padding=1, output_padding=1)
         self.upsample3.weight.data.normal_(0.0, 0.02)
 
@@ -414,9 +376,6 @@ class CapsNet(nn.Module):
 
         self.relu = nn.ReLU()
         self.sig = nn.Sigmoid()
-
-        # self.sentenceNet = sentenceNet()
-        self.sentenceCaps = primarySentenceCaps()
 
         self.conv28 = nn.Conv2d(832, 64, kernel_size=(3, 3), padding=(1, 1))
 
@@ -435,30 +394,7 @@ class CapsNet(nn.Module):
         saved_weights = torch.load(weightfile)
         self.load_state_dict(saved_weights, strict=False)
         print('loaded weights from previous run: ', weightfile)
-
-    # def catcaps(self, wordcaps, imgcaps):
-    #     num_wordcaps = wordcaps.size()[1]
-    #     num_word_poses = int(wordcaps.size()[2] - 1)
-    #     h = imgcaps.size()[1]
-    #     w = imgcaps.size()[2]
-    #     img_data = imgcaps.size()[3]
-    #     num_imgcaps = int(img_data / (self.P * self.P))
-    #     wordcaps = torch.unsqueeze(wordcaps, 1)
-    #     wordcaps = torch.unsqueeze(wordcaps, 1)
-    #     word_caps = wordcaps.repeat(1, h, w, 1, 1)
-
-    #     word_poses = word_caps[:, :, :, :, :num_word_poses]
-    #     word_poses = word_poses.contiguous().view(-1, h, w, num_wordcaps * num_word_poses)
-
-    #     word_acts = word_caps[:, :, :, :, num_word_poses]
-    #     word_acts = word_acts.view(-1, h, w, num_wordcaps)
-
-    #     pose_range = num_imgcaps * self.P * self.P
-    #     img_poses = imgcaps[:, :, :, :pose_range]
-    #     img_acts = imgcaps[:, :, :, pose_range:pose_range + num_imgcaps]
-
-    #     combined_caps = torch.cat((img_poses, word_poses, img_acts, word_acts), dim=-1)
-    #     return combined_caps
+        
     
     def caps_reorder(self, imgcaps):
         h = imgcaps.size()[1]
@@ -474,11 +410,10 @@ class CapsNet(nn.Module):
         return combined_caps
         
         
-    def forward(self, img, classification):
+    def forward(self, img, classification, concat_labels, epoch, thresh_ep):
         '''
         INPUTS:
         img is of shape (B, 3, T, H, W) - B is batch size, T is number of frames (4 in our experiments), H and W are the height and width of frames (224x224 in our experiments)
-        sent is of shape (B, F, N) - B is batch size, F is feature length (300 for word2vec), N is the number of words in the sentence
         classification is of shape (B, ) - B is batch size - this contains the ground-truth class which will be used for masking at training time
         
         OUTPUTS:
@@ -486,17 +421,8 @@ class CapsNet(nn.Module):
         actor_prediction is the actor prediction (B, C) - B is batch size, C is the number of classes
         
         '''
-        # print("orig img shape:", img.shape)
-        # img_flip = img.clone()
-        # img_flip = torch.flip(img_flip, [4])
-        # print("img_flip shape", img_flip.shape)
-
-        # sources = list()
-        # loc = list()
-        # conf = list()
 
         x, cross56, cross112 = self.conv1(img)
-        # print("conv1 x: ", x.shape)
         
         # For 3d Dropout
         x = self.dropout3d(x)
@@ -504,65 +430,59 @@ class CapsNet(nn.Module):
         x = x.view(-1, 832, 28, 28)
         cross28 = x.clone()
         x = self.primary_caps(x)
-        #print("primary_caps x: ", x.shape)
-        #sent_caps = self.sentenceNet(sent)
-        #sent_caps = self.sentenceCaps(sent_caps)
 
-        #x = self.catcaps(sent_caps, x)
         x = self.caps_reorder(x)
-        #print("caps_reorder x: ", x.shape)
         
         combined_caps = self.conv_caps(x)
-        #print("combined_caps: ", combined_caps.shape)
-        #exit()
 
         h = combined_caps.size()[1]
         w = combined_caps.size()[2]
         caps = int(combined_caps.size()[3] / ((self.P * self.P) + 1))
-        range = int(caps * self.P * self.P)
-        activations = combined_caps[:, :, :, range:range + caps]
-        poses = combined_caps[:, :, :, :range]
-        # print(activations.shape)
+        ranges = int(caps * self.P * self.P)
+        
+        activations = combined_caps[:, :, :, ranges:ranges + caps]
+        poses = combined_caps[:, :, :, :ranges]
         actor_prediction = activations
+        
         feat_shape = activations
-        # print(feat_shape.shape)
         feat_shape = torch.reshape(feat_shape, (feat_shape.shape[0], feat_shape.shape[1]*feat_shape.shape[2], feat_shape.shape[3]) )
-        #print(feat_shape.shape)
-        #print(actor_prediction.shape)
+        
         actor_prediction = torch.mean(actor_prediction, 1)
-        # print(actor_prediction.shape)
         actor_prediction = torch.mean(actor_prediction, 1)
-
-        #print("training: ", self.training)
+        
+        poses = poses.view(-1,h,w,caps,self.P*self.P)
+        
         if self.training:
-            activations = torch.eye(caps)[classification.long()]
-            activations = activations
-            activations = activations.cuda()
-            # activations = activations.to(self.device)
+            activations_labeled = torch.eye(caps)[classification.long()]
+            activations_labeled = torch.squeeze(activations_labeled, 1)
+
+            # epoch value begins from 1
+            if epoch<thresh_ep:
+                activations_unlabeled = torch.ones_like(activations_labeled)
+            else:
+                activations_unlabeled = torch.eye(caps)[torch.argmax(actor_prediction, dim=1)]
+            activations = [activations_unlabeled[act] if concat_labels[act]==0 else activations_labeled[act] for act in range(len(concat_labels)) ]
+            activations = torch.stack(activations)
             activations = activations.view(-1, caps, 1)
             activations = torch.unsqueeze(activations, 1)
             activations = torch.unsqueeze(activations, 1)
             activations = activations.repeat(1, h, w, 1, 1)
             activations = activations.cuda()
-            # activations = activations.to(self.device)
 
+            
         else:
             activations = torch.eye(caps)[torch.argmax(actor_prediction, dim=1)]
-            activations = activations.cuda()
-            # activations = activations.to(self.device)
             activations = activations.view(-1, caps, 1)
             activations = torch.unsqueeze(activations, 1)
             activations = torch.unsqueeze(activations, 1)
             activations = activations.repeat(1, h, w, 1, 1)
             activations = activations.cuda()
-            # activations = activations.to(self.device)
-
-        poses = poses.view(-1,h,w,caps,self.P*self.P)
+            
         poses = poses * activations
-        poses = poses.view(-1,h,w,range)
+        poses = poses.view(-1,h,w,ranges)
         poses = poses.permute(0, 3, 1, 2)
-
         x = poses
+
         x = self.relu(self.upsample1(x))
         x = x.view(-1, 64, 1, 28, 28)
 
@@ -573,69 +493,21 @@ class CapsNet(nn.Module):
 
 
         x = self.relu(self.upsample2(x))
-        #print("up2: ", x.shape)
         
         cross56 = self.relu(self.conv56(cross56))
-        #print("cross56: ", cross56.shape)
         x = torch.cat((x, cross56), dim=1)
         x = self.relu(self.upsample3(x))
-        #print("up3: ", x.shape)
+
         cross112 = self.relu(self.conv112(cross112))
         x = torch.cat((x, cross112), dim=1)
 
         x = self.upsample4(x)
-        #print("up4: ", x.shape)
         
         # For 3d Dropout
         x = self.dropout3d(x)
         
         x = self.smooth(x)
         out_1 = x.view(-1,1,8,224,224)
-        # out_1 = x.view(-1,1,8, 112, 112)
-
-        #out_2 = out_1
-        #out_4 = out_1
-        #out_8 = out_1
-        #out = [out_1, out_2, out_4, out_8]
 
         return out_1, actor_prediction, feat_shape
 
-# def get_activation(name):
-#     def hook(model, input, output):
-#         # print(activation[name])
-#         activation[name] = output.detach()
-#     return hook
-
-outputs= []
-def hook(module, input, output):
-    outputs.append(output)
-
-if __name__ == '__main__':
-    activation = {}
-
-    device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
-    model = CapsNet()
-    # print(model)
-
-    # model = model.cuda()
-    # fstack = torch.rand(1, 3, 8, 224, 224).cuda()
-    # actor = torch.Tensor([1]).view(1, 1).cuda()
-    #sentence = torch.rand(1, 300, 16).cuda()
-    model = model.to(device)
-    # summary(model, [(3, 8, 224, 224), [1, 1]])
-    fstack = torch.rand(1, 3, 8, 224, 224).to(device)
-    actor = torch.Tensor([1]).view(1, 1).to(device)
-    # print(fstack.shape)
-    out, ap, feat_shape = model(fstack, actor)
-    # print(out[0,0,0].shape)
-    # np_out = out[0,0,0].cpu().detach().numpy()
-    # print(len(np.unique(np_out)))
-    # for name, param in model.named_parameters():
-    #     # if param.requires_grad:
-    #     print (name, param.data.shape)
-    # model.conv_caps.register_forward_hook(hook)
-    # # print(bs)
-    # print("out_1: ", out[0].shape)
-    # print("activations: ", ap.shape)
-    # print(feat_shape.shape)
-    # print(outputs)
