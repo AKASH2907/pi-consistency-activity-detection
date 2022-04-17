@@ -1,3 +1,5 @@
+Hi, I apologize for delay in releasing codes. Please wait till **end of April**. Really very busy with coursework and projects. Thanks for understanding.
+
 This is the official implementation of our work End-to-End Semi-Supervised Learning for Video Action Detection at CVPR'22.
 
 This is the command line argument to run the code respectively for variance and gradient maps:
