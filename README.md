@@ -1,5 +1,4 @@
 This is the official implementation of our work End-to-End Semi-Supervised Learning for Video Action Detection at CVPR'22.
-[![arXiv](https://img.shields.io/badge/arXiv-2203.04251-b31b1b.svg)](https://arxiv.org/abs/2203.04251)
 
 This is the command line argument to run the code respectively for variance and gradient maps:
 
