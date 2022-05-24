@@ -24,7 +24,7 @@ from tensorboardX import SummaryWriter
 from datasets.ucf_dataloader import UCF101DataLoader
 from models.capsules_ucf101 import CapsNet
 
-from utils.losses import SpreadLoss, DiceLoss, IoULoss, weighted_mse_loss
+from utils.losses import SpreadLoss, DiceLoss, weighted_mse_loss
 from utils.metrics import get_accuracy, IOU2
 from utils.helpers import measure_pixelwise_var_v2, measure_pixelwise_gradient
 from utils import ramp_ups
