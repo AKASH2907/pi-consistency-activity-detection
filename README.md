@@ -32,6 +32,11 @@ Parameters explanation:
 - *pkl_file_label* - Labeled subset
 - *pkl_file_unlabel* - Unlabeled subset
 
+Please find the I3D pre-trained weights at the following location. We have used **rgb_charades.pt** for our experiments. 
+```
+https://github.com/piergiaj/pytorch-i3d/tree/master/models
+```
+
 This code runs for UCF101. For JHMDB, everything is similar except the dataloading, since there it's a localization mask compared to bounding boxes in UCF101.
 
 Set data path for UCF101 videos in ucf_dataloader.py inside datasets.
