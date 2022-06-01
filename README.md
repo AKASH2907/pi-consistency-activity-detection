@@ -32,10 +32,15 @@ Parameters explanation:
 - *pkl_file_label* - Labeled subset
 - *pkl_file_unlabel* - Unlabeled subset
 
-Please find the I3D pre-trained weights at the following location. We have used **rgb_charades.pt** for our experiments. 
+Link to download I3D pre-trained weights:  
 ```
 https://github.com/piergiaj/pytorch-i3d/tree/master/models
 ```
+We have used **rgb_charades.pt** for our experiments.
+
+Use pickle files from this location: [Link](https://drive.google.com/drive/u/0/folders/1aFlPKtzWIufyAOkcAmUySH4PB_uCPDkj)
+
+
 
 This code runs for UCF101. For JHMDB, everything is similar except the dataloading, since there it's a localization mask compared to bounding boxes in UCF101.
 
