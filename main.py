@@ -120,6 +120,7 @@ def train_model_interface(args, label_minibatch, unlabel_minibatch, epoch, wt_ra
         loss_wt_var_1 = weighted_mse_loss(flipped_pred_seg_map, output, batch_variance_clck)
         loss_wt_var_2 = weighted_mse_loss(flipped_pred_seg_map, output, torch.flip(batch_variance_anticlck, [2]))
         
+        
         total_seg_cons_loss_1 = (wt_ramp * (loss_wt_var_1 + loss_wt_var_2)) + ((1 - wt_ramp) * loss_wt_simple_l2)
 
     ####################################
@@ -128,8 +129,9 @@ def train_model_interface(args, label_minibatch, unlabel_minibatch, epoch, wt_ra
     if args.gv:
         batch_grad = measure_pixelwise_gradient(output, conf_thresh_lower=args.lower_thresh, conf_thresh_upper=args.upper_thresh)
         batch_grad = batch_grad.type(torch.cuda.FloatTensor)
-
-        total_seg_cons_loss_2 = (wt_ramp * loss_wt_grad) + ((1 - wt_ramp) * loss_wt_simple_l2)
+        loss_wt_grad = weighted_mse_loss(flipped_pred_seg_map, output, batch_grad)
+        total_seg_cons_loss_2 = loss_wt_grad
+        # total_seg_cons_loss_2 = (wt_ramp * loss_wt_grad) + ((1 - wt_ramp) * loss_wt_simple_l2)
     
     if args.bv and args.gv:
         total_seg_cons_loss = args.bv_wt * total_seg_cons_loss_1 + args.gv_wt * total_seg_cons_loss_2
