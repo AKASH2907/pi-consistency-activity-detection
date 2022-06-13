@@ -38,11 +38,11 @@ https://github.com/piergiaj/pytorch-i3d/tree/master/models
 ```
 We have used **rgb_charades.pt** for our experiments.
 
-Use pickle files from this location: [Link](https://drive.google.com/drive/u/0/folders/1aFlPKtzWIufyAOkcAmUySH4PB_uCPDkj)
+## Datasets Info
 
+UCF101-24 splits: [Pickle files](https://drive.google.com/drive/u/0/folders/1aFlPKtzWIufyAOkcAmUySH4PB_uCPDkj)
 
-
-This code runs for UCF101. For JHMDB, everything is similar except the dataloading, since there it's a localization mask compared to bounding boxes in UCF101.
+JHMDB-21  splits: [Text files](https://drive.google.com/drive/u/0/folders/1whGR2pg299D5W7jDV9Rop_jpr1ENIALF)
 
 Set data path for UCF101 videos in ucf_dataloader.py inside datasets.
 
@@ -50,14 +50,13 @@ Set data path for UCF101 videos in ucf_dataloader.py inside datasets.
 If you find this work useful, please consider citing the following paper:
 
 ```
-@article{Kumar2022EndtoEndSL,
-  title={End-to-End Semi-Supervised Learning for Video Action Detection},
-  author={Akash Kumar and Yogesh Singh Rawat},
-  journal={ArXiv},
-  year={2022},
-  volume={abs/2203.04251}
+df] [supp] [arXiv] [bibtex]
+@InProceedings{Kumar_2022_CVPR,
+    author    = {Kumar, Akash and Rawat, Yogesh Singh},
+    title     = {End-to-End Semi-Supervised Learning for Video Action Detection},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    month     = {June},
+    year      = {2022},
+    pages     = {14700-14710}
 }
 ```
-
-
-Updates: I'll update readme file, jhmdb loader and dataset splits we used.
