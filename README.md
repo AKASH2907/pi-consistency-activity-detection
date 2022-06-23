@@ -1,4 +1,4 @@
-This is the official implementation of our work End-to-End Semi-Supervised Learning for Video Action Detection at CVPR'22.
+This is the official implementation of our work End-to-End Semi-Supervised Learning for Video Action Detection at CVPR'22. [Paper](https://arxiv.org/abs/2203.04251)
 
 This is the command line argument to run the code respectively for variance and gradient maps:
 
@@ -50,7 +50,6 @@ Set data path for UCF101 videos in ucf_dataloader.py inside datasets.
 If you find this work useful, please consider citing the following paper:
 
 ```
-df] [supp] [arXiv] [bibtex]
 @InProceedings{Kumar_2022_CVPR,
     author    = {Kumar, Akash and Rawat, Yogesh Singh},
     title     = {End-to-End Semi-Supervised Learning for Video Action Detection},
