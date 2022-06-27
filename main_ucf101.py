@@ -139,6 +139,8 @@ def train_model_interface(args, label_minibatch, unlabel_minibatch, epoch, wt_ra
         total_seg_cons_loss = total_seg_cons_loss_2
     elif args.bv:
         total_seg_cons_loss = total_seg_cons_loss_1
+    else:
+        total_seg_cons_loss = loss_wt_simple_l2
 
     total_cons_loss = total_seg_cons_loss
     
