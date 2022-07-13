@@ -14,11 +14,9 @@ from scipy.stats import norm
 
 '''
 
-Loads in videos for the 24 class subset of UCF-101.
+Loads in videos for the 21 class subset of JHMDB-21.
 
-The data is assumed to be organized in a folder (dataset_dir):
--Subfolder UCF101_vids contains the videos
--Subfolder UCF101_Annotations contains the .mat annotation files
+Same stuff as UCF101DataLoader.
 
 UCF101DataLoader loads in the videos and formats their annotations on seperate threads.
 -Argument train_or_test determines if you want to load in training or testing data
@@ -71,7 +69,7 @@ class JHMDB(Dataset):
         
         # training_annot_file = 'trainlist_JHMDB.txt'
         # training_annot_file = 'trainlist.txt'
-        training_annot_file =  '../jhmdb_seed_37/' + file_id
+        training_annot_file =  '../jhmdb_txt_file/' + file_id
 
         with open(training_annot_file,"r") as rid:
             train_list = rid.readlines()
@@ -307,60 +305,4 @@ class JHMDB(Dataset):
             return video_reshape, mask, label, annot_frames
         else:
             return video_reshape, mask_m, label, annot_frames
-
-if __name__ == '__main__':
-    import imageio    
-    name='train'
-    clip_shape=[224,224]
-    channels=3
-    # batch_size = 5
-    dataloader = JHMDB(name, clip_shape, "jhmdb_classes_list_per_30_labeled.txt")
-    print(len(dataloader))
-    #exit()
-    index = 0
-    while True:
-        sample = dataloader.__getitem__(index)
-        
-        clip = sample['data']
-        bbox_cls = sample['loc_msk']
-        bbox_msk = sample['mask_cls']
-        # print(clip.shape, bbox_cls.shape, bbox_msk.shape)
-        # exit()
-        clip, bbox_cls, bbox_msk = clip.numpy(), bbox_cls.numpy(), bbox_msk.numpy()
-        clip = np.transpose(clip, [1, 2, 3, 0])
-        # print(clip.shape)
-        # exit()
-        bbox_cls = np.transpose(bbox_cls, [1, 2, 3, 0])
-        bbox_msk = np.transpose(bbox_msk, [1, 2, 3, 0])
-
-        if index==7:
-            with imageio.get_writer('./results/orig_{:02d}_gt.gif'.format(index), mode='I') as writer:
-                for i in range(clip.shape[0]):
-                    image = (clip[i]*255).astype(np.uint8)
-                    image = image[...,::-1].copy()
-                    writer.append_data(image) 
-                    
-            # with imageio.get_writer('./results/orig_cls_{:02d}_gt.gif'.format(index), mode='I') as writer:
-            #     for i in range(clip.shape[0]):
-            #         image = (clip[i,:,:,0]*255).astype(np.uint8)
-            #         cl_mask = (bbox_cls[i,:,:,0]*255).astype(np.uint8)
-            #         # cl_mask[cl_mask>0] = 255
-            #         # print(image.shape,clip_mask[i,:,:,0].shape)
-            #         # image = cv2.drawContours(image, clip_mask[i,:,:,0][0], -1, (0 , 255, 0), 3)
-            #         image = cv2.bitwise_and(image, image, mask=cl_mask)
-            #         writer.append_data(image) 
-
-            # with imageio.get_writer('./results/orig_mask_{:02d}_gt.gif'.format(index), mode='I') as writer:
-            #     for i in range(clip.shape[0]):
-            #         image = (clip[i,:,:,0]*255).astype(np.uint8)
-            #         cl_mask = (bbox_msk[i,:,:,0]*255).astype(np.uint8)
-            #         # print(image.shape,clip_mask[i,:,:,0].shape)
-            #         # image = cv2.drawContours(image, clip_mask[i,:,:,0][0], -1, (0 , 255, 0), 3)
-            #         image = cv2.bitwise_and(image, image, mask=cl_mask)
-            #         writer.append_data(image) 
-
-            exit()
-        
-        index += 1         
-        # exit() 
     
