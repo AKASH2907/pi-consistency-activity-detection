@@ -1,5 +1,9 @@
 This is the official implementation of our work End-to-End Semi-Supervised Learning for Video Action Detection at CVPR'22. [Paper](https://arxiv.org/abs/2203.04251)
 
+![framework](https://user-images.githubusercontent.com/22872200/179375948-a81c8997-b60a-40d7-ad66-d54bbe2cb3ab.png)
+
+## Train instructions
+
 This is the command line argument to run the code respectively for variance and gradient maps:
 
 ```
@@ -32,19 +36,25 @@ Parameters explanation:
 - *pkl_file_label* - Labeled subset
 - *pkl_file_unlabel* - Unlabeled subset
 
+## Pre-trained weights
+
 Link to download I3D pre-trained weights:  
 ```
 https://github.com/piergiaj/pytorch-i3d/tree/master/models
 ```
 We have used **rgb_charades.pt** for our experiments.
 
-## Datasets Info
+## Datasets
 
 UCF101-24 splits: [Pickle files](https://drive.google.com/drive/u/0/folders/1aFlPKtzWIufyAOkcAmUySH4PB_uCPDkj)
 
 JHMDB-21  splits: [Text files](https://drive.google.com/drive/u/0/folders/1whGR2pg299D5W7jDV9Rop_jpr1ENIALF)
 
 Set data path for UCF101 videos in ucf_dataloader.py inside datasets.
+
+## Results
+![main results](https://user-images.githubusercontent.com/22872200/179379251-885932a9-6c32-4dd0-8ce7-eaf3dbd15f6e.png)
+
 
 ## Citation
 If you find this work useful, please consider citing the following paper:
