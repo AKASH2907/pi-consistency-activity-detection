@@ -289,7 +289,6 @@ testpath @ file:///tmp/build/80754af9/testpath_1624638946665/work
 thinplate @ git+https://github.com/cheind/py-thin-plate-spline@f6995795397118b7d0ac01aecd3f39ffbfad9dee
 threadpoolctl @ file:///Users/ktietz/demo/mc3/conda-bld/threadpoolctl_1629802263681/work
 # Editable install with no version control (timesformer==1.0)
--e /home/ak119590/gait/training_codes/exp_1_basic_3d_train/transformers_train/timesformer
 timm==0.5.4
 toml @ file:///tmp/build/80754af9/toml_1616166611790/work
 toolz @ file:///home/linux1/recipes/ci/toolz_1610987900194/work
