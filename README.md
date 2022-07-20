@@ -36,6 +36,13 @@ Parameters explanation:
 - *pkl_file_label* - Labeled subset
 - *pkl_file_unlabel* - Unlabeled subset
 
+## Evaluation
+
+```
+python evaluate.py --ckpt exp_id_folder
+```
+
+
 ## Pre-trained weights
 
 Link to download I3D pre-trained weights:  
