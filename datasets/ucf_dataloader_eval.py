@@ -74,7 +74,7 @@ class UCF101DataLoader(Dataset):
     def get_det_annots_test_prepared(self):
         import pickle    
         # print("testing annotations ...")
-        with open('/home/c3-0/ak119590/activity_detect/caps_net/testing_annots.pkl', 'rb') as ts_rid:
+        with open('testing_annots.pkl', 'rb') as ts_rid:
             testing_annotations = pickle.load(ts_rid)
             
         return testing_annotations    
@@ -104,14 +104,7 @@ class UCF101DataLoader(Dataset):
         clip = clip[:, h_crop_start:h_crop_start+self._height, w_crop_start:w_crop_start+self._width, :] / 255.
         bbox_clip = bbox_clip[:, h_crop_start:h_crop_start+self._height, w_crop_start:w_crop_start+self._width, :]
 
-        # flip_clip = clip.copy()
-        # flip_clip = flip_clip[:, :, ::-1, :]
-
-        # print(type(clip), type(flip_clip))
-        # print(type(clip), type(bbox_clip))
-        # exit()
         return clip, bbox_clip, label
-        # return clip, torch.from_numpy(flip_clip.copy()), bbox_clip, label
 
 
     def load_video(self, video_name, annotations):
@@ -189,147 +182,6 @@ if __name__ == '__main__':
             for i in range(0, flip_clip.shape[0], 20):
                 image = (flip_clip[i]*255).astype(np.uint8)
                 writer.append_data(image) 
-        #print(frm_idx)
-        #pdb.set_trace()
-        #with imageio.get_writer('./results/{:02d}_gt.gif'.format(index), mode='I') as writer:
-        #    for i in range(clip.shape[1]):
-        #        image = (clip[0,i]*255).astype(np.uint8)
-        #        #image = image[:,:,::-1]
-        #        writer.append_data(image) 
-      
-        # for i in range(cls_lbl.shape[1]):
-        #     for j in range(cls_lbl.shape[-1]):
-        #         img = cls_lbl[0, i, :, :, j] * 255
-        #         out_img = './results/samples/{:02d}_{:02d}_{:02d}_cls.jpg'.format(index, i, j)
-        #         cv2.imwrite(out_img, img)
-                
-        #         img = cls_mask[0, i, :, :, j] * 255
-        #         out_img = './results/samples/{:02d}_{:02d}_{:02d}_mask_cls.jpg'.format(index, i, j)
-        #         cv2.imwrite(out_img, img)
-            
-        #     img = lbl[0, i, :, :, 0] * 255
-        #     out_img = './results/samples/{:02d}_{:02d}_lbl.jpg'.format(index, i)
-        #     cv2.imwrite(out_img, img)            
-            
-        #     img = lbl_mask[0, i, :, :, 0] * 255
-        #     out_img = './results/samples/{:02d}_{:02d}_fg_mask_lbl.jpg'.format(index, i)
-        #     cv2.imwrite(out_img, img)                        
-                
-        #out_img = './results/{:02d}_fg.jpg'.format(index)
-        #img = lbl[0,0,:,:,0] * 255
-        #cv2.imwrite(out_img, img)
-      
-      
-        '''
-        with imageio.get_writer('./results/{:02d}_lbl.gif'.format(index), mode='I') as writer:
-            for i in range(clip.shape[1]):
-              image = (lbl[0,i] * clip[0,i]).astype(np.uint8) 
-              writer.append_data(image) 
-
-
-        for j in range(mask.shape[-1]):
-        with imageio.get_writer('./results/{:02d}_{:02d}_mcls.gif'.format(index, j), mode='I') as writer:
-          for i in range(mask.shape[1]):
-            image = (mask[0,i,:,:,j] * 255).astype(np.uint8)
-            writer.append_data(image)    
-        '''
-
-        '''
-        for j in range(mask_mul.shape[-1]):
-        with imageio.get_writer('./results/{:02d}_{:02d}_mmul.gif'.format(index, j), mode='I') as writer:
-          for i in range(mask_mul.shape[1]):
-            image = (mask_mul[0,i,:,:,j] * 255).astype(np.uint8)
-            writer.append_data(image)    
-
-        for j in range(mask_add.shape[-1]):
-        with imageio.get_writer('./results/{:02d}_{:02d}_madd.gif'.format(index, j), mode='I') as writer:
-          for i in range(mask_add.shape[1]):
-            image = (mask_add[0,i,:,:,j] * 255).astype(np.uint8)
-            writer.append_data(image)    
-        '''
         print("Done for ", index)
         index += 1         
         exit() 
-      
-      
-      
-      
-
-
-
-
-
-
-
-
-# def get_det_annotations(self):
-#         print("Preparing train/test pickle...")
-        
-#         # f = loadmat(dataset_dir + 'UCF101_Annotations/trainAnnot.mat')
-#         # f2 = loadmat(dataset_dir + 'UCF101_Annotations/testAnnot.mat')
-#         f = loadmat(self._dataset_dir + '/trainAnnot.mat')
-#         f2 = loadmat(self._dataset_dir + '/testAnnot.mat')
-
-#         training_annotations = []
-#         for ann in f['annot'][0]:
-#             file_name = ann[1][0]
-
-#             sp_annotations = ann[2][0]
-#             annotations = []
-            
-#             for sp_ann in sp_annotations:
-#                 frame_annot = []
-#                 ef = sp_ann[0][0][0] - 1
-#                 sf = sp_ann[1][0][0] - 1
-#                 label = sp_ann[2][0][0] - 1
-#                 bboxes = (sp_ann[3]).astype(np.int32)
-#                 if ef - sf > 80:
-#                     frames_to_choose = 5
-#                 elif ef - sf >50:
-#                     frames_to_choose = 3
-#                 elif ef - sf > 30:
-#                     frames_to_choose = 2
-#                 else:
-#                     frames_to_choose = 1
-#                 for i in range(frames_to_choose):
-#                     cf = np.random.randint(sf, ef)    #sf + int((ef - sf) / 2)
-#                     if cf < 30:
-#                         frame_annot.append(ef - 5)
-#                     else:
-#                         frame_annot.append(cf)
-#                 annotations.append((sf, ef, label, bboxes, frame_annot))
-#             training_annotations.append((file_name, annotations))
-        
-#         '''
-#         with open('training_annots_multi.pkl','wb') as wid:
-#             pickle.dump(training_annotations, wid, pickle.HIGHEST_PROTOCOL)
-#         exit(0)
-#         '''
-        
-#         testing_annotations = []
-#         for ann in f2['annot'][0]:
-#             file_name = ann[1][0]
-
-#             sp_annotations = ann[2][0]
-#             annotations = []
-#             frame_annot = []
-#             for sp_ann in sp_annotations:
-#                 ef = sp_ann[0][0][0] - 1
-#                 sf = sp_ann[1][0][0] - 1
-#                 label = sp_ann[2][0][0] - 1
-#                 bboxes = (sp_ann[3]).astype(np.int32)
-#                 if len(annotations) == 0:
-#                     cf = sf + int((ef - sf) / 2)
-#                     if cf < 30:
-#                         frame_annot.append(ef - 5)
-#                     else:
-#                         frame_annot.append(cf)
-#                 annotations.append((sf, ef, label, bboxes, frame_annot))
-
-#             testing_annotations.append((file_name, annotations))
-#         '''
-#         with open('testing_annots.pkl','wb') as wid2:
-#             pickle.dump(testing_annotations, wid2, pickle.HIGHEST_PROTOCOL)
-#         exit()
-#         '''
-#         return training_annotations, testing_annotations
